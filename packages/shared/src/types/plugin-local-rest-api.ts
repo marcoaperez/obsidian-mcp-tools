@@ -214,7 +214,7 @@ export const ApiPatchParameters = type({
     "Identifies what to modify: a section under a heading, a referenced block, or a frontmatter field",
   ),
   target: type("string").describe(
-    "The identifier - either heading path (e.g. 'Heading 1::Subheading 1:1'), block reference ID, or frontmatter field name",
+    "The identifier - either heading path, block reference ID, or frontmatter field name. For headings, ALWAYS use the full path from the root heading delimited by '::' (e.g. 'Heading 1::Subheading 1:1'). Using only the leaf heading name may fail to find the target.",
   ),
   "targetDelimiter?": type("string").describe(
     "The separator used in heading paths to indicate nesting (default '::')",

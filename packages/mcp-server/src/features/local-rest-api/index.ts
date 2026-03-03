@@ -99,8 +99,14 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
         Operation: args.operation,
         "Target-Type": args.targetType,
         Target: encodeURIComponent(args.target),
-        "Create-Target-If-Missing": "true",
       };
+
+      // Only create target if missing for append/prepend, not replace.
+      // For replace, a missing target should return an error rather than
+      // silently creating a duplicate heading.
+      if (args.operation !== "replace") {
+        headers["Create-Target-If-Missing"] = "true";
+      }
 
       if (args.targetDelimiter) {
         headers["Target-Delimiter"] = encodeURIComponent(args.targetDelimiter);
@@ -360,8 +366,14 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
         Operation: args.operation,
         "Target-Type": args.targetType,
         Target: encodeURIComponent(args.target),
-        "Create-Target-If-Missing": "true",
       };
+
+      // Only create target if missing for append/prepend, not replace.
+      // For replace, a missing target should return an error rather than
+      // silently creating a duplicate heading.
+      if (args.operation !== "replace") {
+        headers["Create-Target-If-Missing"] = "true";
+      }
 
       if (args.targetDelimiter) {
         headers["Target-Delimiter"] = encodeURIComponent(args.targetDelimiter);
