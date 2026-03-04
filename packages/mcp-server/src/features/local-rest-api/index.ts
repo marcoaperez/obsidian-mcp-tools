@@ -118,13 +118,20 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
         headers["Content-Type"] = args.contentType;
       }
 
+      // Ensure replace on headings ends with a trailing newline so the
+      // next heading in the document remains properly separated.
+      let body = args.content;
+      if (args.operation === "replace" && args.targetType === "heading") {
+        body = body.replace(/\n*$/, "\n\n");
+      }
+
       const response = await makeRequest(
         LocalRestAPI.ApiContentResponse,
         "/active/",
         {
           method: "PATCH",
           headers,
-          body: args.content,
+          body,
         },
       );
       return {
@@ -385,13 +392,20 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
         headers["Content-Type"] = args.contentType;
       }
 
+      // Ensure replace on headings ends with a trailing newline so the
+      // next heading in the document remains properly separated.
+      let body = args.content;
+      if (args.operation === "replace" && args.targetType === "heading") {
+        body = body.replace(/\n*$/, "\n\n");
+      }
+
       const response = await makeRequest(
         LocalRestAPI.ApiContentResponse,
         `/vault/${encodeURIComponent(args.filename)}`,
         {
           method: "PATCH",
           headers,
-          body: args.content,
+          body,
         },
       );
 
