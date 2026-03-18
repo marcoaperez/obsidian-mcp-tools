@@ -644,6 +644,233 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
     },
   );
 
+  // GET Document Map (headings, blocks, frontmatter fields)
+  tools.register(
+    type({
+      name: '"get_document_map"',
+      arguments: {
+        filename: type("string").describe(
+          "Path to the file (relative to vault root).",
+        ),
+      },
+    }).describe(
+      "Get the structure of a document: all headings (with full paths), block references, and frontmatter field names. Use this before patch operations to discover valid targets. Returns the exact target strings needed for patch_vault_file.",
+    ),
+    async ({ arguments: args }) => {
+      const data = await makeRequest(
+        type({
+          headings: "string[]",
+          blocks: "string[]",
+          frontmatterFields: "string[]",
+        }),
+        `/vault/${encodeURIComponent(args.filename)}`,
+        {
+          headers: {
+            Accept: "application/vnd.olrapi.document-map+json",
+          },
+        },
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+      };
+    },
+  );
+
+  // GET Periodic Note
+  tools.register(
+    type({
+      name: '"get_periodic_note"',
+      arguments: {
+        period: type('"daily" | "weekly" | "monthly" | "quarterly" | "yearly"').describe(
+          "The period type of the note to retrieve.",
+        ),
+        "year?": type("number").describe("Year (e.g. 2026). Omit to get the current period's note."),
+        "month?": type("number").describe("Month (1-12). Required with year for daily/weekly/monthly notes."),
+        "day?": type("number").describe("Day (1-31). Required with year and month for daily/weekly notes."),
+        "format?": type('"markdown" | "json"').describe(
+          "Response format. 'markdown' returns raw content. 'json' returns parsed note with frontmatter, tags, and stats.",
+        ),
+      },
+    }).describe(
+      "Get a periodic note (daily, weekly, monthly, quarterly, or yearly). Without date parameters, returns the current period's note. With date parameters, returns the note for that specific date. Requires the Periodic Notes plugin.",
+    ),
+    async ({ arguments: args }) => {
+      const datePart =
+        args.year !== undefined
+          ? `/${args.year}/${args.month ?? 1}/${args.day ?? 1}`
+          : "";
+      const path = `/periodic/${args.period}${datePart}/`;
+      const isJson = args.format === "json";
+      const accept = isJson
+        ? "application/vnd.olrapi.note+json"
+        : "text/markdown";
+
+      const data = await makeRequest(
+        isJson ? LocalRestAPI.ApiNoteJson : LocalRestAPI.ApiContentResponse,
+        path,
+        { headers: { Accept: accept } },
+      );
+
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              typeof data === "string" ? data : JSON.stringify(data, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // POST Append to Periodic Note
+  tools.register(
+    type({
+      name: '"append_to_periodic_note"',
+      arguments: {
+        period: type('"daily" | "weekly" | "monthly" | "quarterly" | "yearly"').describe(
+          "The period type of the note.",
+        ),
+        content: type("string").describe("Content to append to the periodic note."),
+        "year?": type("number").describe("Year (e.g. 2026). Omit for the current period."),
+        "month?": type("number").describe("Month (1-12)."),
+        "day?": type("number").describe("Day (1-31)."),
+      },
+    }).describe(
+      "Append content to a periodic note. Creates the note if it doesn't exist. Without date parameters, appends to the current period's note. Requires the Periodic Notes plugin.",
+    ),
+    async ({ arguments: args }) => {
+      const datePart =
+        args.year !== undefined
+          ? `/${args.year}/${args.month ?? 1}/${args.day ?? 1}`
+          : "";
+      const path = `/periodic/${args.period}${datePart}/`;
+
+      await makeRequest(LocalRestAPI.ApiNoContentResponse, path, {
+        method: "POST",
+        body: args.content,
+      });
+
+      return {
+        content: [{ type: "text", text: "Content appended to periodic note successfully" }],
+      };
+    },
+  );
+
+  // PATCH Periodic Note
+  tools.register(
+    type({
+      name: '"patch_periodic_note"',
+      arguments: type({
+        period: type('"daily" | "weekly" | "monthly" | "quarterly" | "yearly"').describe(
+          "The period type of the note.",
+        ),
+        "year?": type("number").describe("Year (e.g. 2026). Omit for the current period."),
+        "month?": type("number").describe("Month (1-12)."),
+        "day?": type("number").describe("Day (1-31)."),
+      }).and(LocalRestAPI.ApiPatchParameters),
+    }).describe(
+      "Insert or modify content in a periodic note relative to a heading, block reference, or frontmatter field. Requires the Periodic Notes plugin.",
+    ),
+    async ({ arguments: args }) => {
+      const datePart =
+        args.year !== undefined
+          ? `/${args.year}/${args.month ?? 1}/${args.day ?? 1}`
+          : "";
+      const path = `/periodic/${args.period}${datePart}/`;
+
+      const headers: Record<string, string> = {
+        Operation: args.operation,
+        "Target-Type": args.targetType,
+        Target: encodeURIComponent(args.target),
+      };
+
+      if (args.operation !== "replace") {
+        headers["Create-Target-If-Missing"] = "true";
+      }
+      if (args.targetDelimiter) {
+        headers["Target-Delimiter"] = encodeURIComponent(args.targetDelimiter);
+      }
+      if (args.trimTargetWhitespace !== undefined) {
+        headers["Trim-Target-Whitespace"] = String(args.trimTargetWhitespace);
+      }
+      if (args.contentType) {
+        headers["Content-Type"] = args.contentType;
+      }
+
+      let body = args.content;
+      if (args.operation === "replace" && args.targetType === "heading") {
+        body = body.replace(/\n*$/, "\n\n");
+      }
+
+      try {
+        const response = await makeRequest(
+          LocalRestAPI.ApiContentResponse,
+          path,
+          { method: "PATCH", headers, body },
+        );
+        return {
+          content: [
+            { type: "text", text: "Periodic note patched successfully" },
+            { type: "text", text: response },
+          ],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("invalid-target")) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Could not find target "${args.target}" (type: ${args.targetType}, operation: ${args.operation}) in periodic note. For headings, use the full path delimited by '::'.`,
+          );
+        }
+        throw error;
+      }
+    },
+  );
+
+  // GET Commands List
+  tools.register(
+    type({
+      name: '"list_commands"',
+      arguments: "Record<string, unknown>",
+    }).describe(
+      "List all available Obsidian commands. Returns command IDs and names. Use with execute_command to run any command.",
+    ),
+    async () => {
+      const data = await makeRequest(
+        LocalRestAPI.ApiCommandsResponse,
+        "/commands/",
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+      };
+    },
+  );
+
+  // POST Execute Command
+  tools.register(
+    type({
+      name: '"execute_command"',
+      arguments: {
+        commandId: type("string").describe(
+          "The ID of the command to execute (e.g. 'global-search:open', 'graph:open'). Use list_commands to discover available IDs.",
+        ),
+      },
+    }).describe(
+      "Execute an Obsidian command by its ID. Can trigger any command available in the command palette: open graph view, toggle sidebar, sync, export, etc. Use list_commands first to discover available command IDs.",
+    ),
+    async ({ arguments: args }) => {
+      await makeRequest(
+        LocalRestAPI.ApiNoContentResponse,
+        `/commands/${encodeURIComponent(args.commandId)}/`,
+        { method: "POST" },
+      );
+      return {
+        content: [{ type: "text", text: `Command "${args.commandId}" executed successfully` }],
+      };
+    },
+  );
+
   // DELETE Vault File Content
   tools.register(
     type({
