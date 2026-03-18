@@ -1,5 +1,6 @@
 import { makeRequest, type ToolRegistry } from "$/shared";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { type } from "arktype";
 import { LocalRestAPI } from "shared";
 
@@ -125,21 +126,32 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
         body = body.replace(/\n*$/, "\n\n");
       }
 
-      const response = await makeRequest(
-        LocalRestAPI.ApiContentResponse,
-        "/active/",
-        {
-          method: "PATCH",
-          headers,
-          body,
-        },
-      );
-      return {
-        content: [
-          { type: "text", text: "File patched successfully" },
-          { type: "text", text: response },
-        ],
-      };
+      try {
+        const response = await makeRequest(
+          LocalRestAPI.ApiContentResponse,
+          "/active/",
+          {
+            method: "PATCH",
+            headers,
+            body,
+          },
+        );
+        return {
+          content: [
+            { type: "text", text: "File patched successfully" },
+            { type: "text", text: response },
+          ],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("invalid-target")) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Could not find target "${args.target}" (type: ${args.targetType}, operation: ${args.operation}) in the active file. For headings, use the full path from the root heading delimited by '::' (e.g. 'Heading 1::Subheading'). Check that the heading text matches exactly, including any special characters.`,
+          );
+        }
+        throw error;
+      }
     },
   );
 
@@ -227,6 +239,9 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
       arguments: {
         query: "string",
         "contextLength?": "number",
+        "limit?": type("number").describe(
+          "Maximum number of results to return. Helps prevent excessively large responses. Defaults to all results.",
+        ),
       },
     }).describe("Search for documents matching a text query."),
     async ({ arguments: args }) => {
@@ -247,8 +262,13 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
         },
       );
 
+      // Apply client-side limit to prevent excessively large responses
+      const results = args.limit && Array.isArray(data)
+        ? data.slice(0, args.limit)
+        : data;
+
       return {
-        content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
       };
     },
   );
@@ -399,22 +419,33 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
         body = body.replace(/\n*$/, "\n\n");
       }
 
-      const response = await makeRequest(
-        LocalRestAPI.ApiContentResponse,
-        `/vault/${encodeURIComponent(args.filename)}`,
-        {
-          method: "PATCH",
-          headers,
-          body,
-        },
-      );
+      try {
+        const response = await makeRequest(
+          LocalRestAPI.ApiContentResponse,
+          `/vault/${encodeURIComponent(args.filename)}`,
+          {
+            method: "PATCH",
+            headers,
+            body,
+          },
+        );
 
-      return {
-        content: [
-          { type: "text", text: "File patched successfully" },
-          { type: "text", text: response },
-        ],
-      };
+        return {
+          content: [
+            { type: "text", text: "File patched successfully" },
+            { type: "text", text: response },
+          ],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("invalid-target")) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Could not find target "${args.target}" (type: ${args.targetType}, operation: ${args.operation}) in "${args.filename}". For headings, use the full path from the root heading delimited by '::' (e.g. 'Heading 1::Subheading'). Check that the heading text matches exactly, including any special characters.`,
+          );
+        }
+        throw error;
+      }
     },
   );
 
