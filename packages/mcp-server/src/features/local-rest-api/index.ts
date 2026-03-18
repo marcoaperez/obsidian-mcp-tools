@@ -204,8 +204,10 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
     type({
       name: '"search_vault"',
       arguments: {
-        queryType: '"dataview" | "jsonlogic"',
         query: "string",
+        queryType: type('"dataview" | "jsonlogic"').describe(
+          "Query language to use. 'dataview' for Dataview DQL queries, 'jsonlogic' for JsonLogic JSON queries.",
+        ),
       },
     }).describe(
       "Search for documents matching a specified query using either Dataview DQL or JsonLogic.",
@@ -303,7 +305,12 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
       name: '"get_vault_file"',
       arguments: {
         filename: "string",
-        "format?": '"markdown" | "json"',
+        "format?": type('"markdown" | "json"').describe(
+          "Response format. 'markdown' returns raw file content. 'json' returns parsed note with frontmatter, tags, and file stats.",
+        ),
+        "frontmatterOnly?": type("boolean").describe(
+          "When true and format is 'json', returns only frontmatter and tags without the full content. Useful for exploring metadata across many files without consuming excessive tokens.",
+        ),
       },
     }).describe("Get the content of a file from your vault."),
     async ({ arguments: args }) => {
@@ -318,6 +325,15 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
           headers: { Accept: format },
         },
       );
+
+      // Strip content when frontmatterOnly is requested
+      if (args.frontmatterOnly && isJson && typeof data === "object" && data !== null) {
+        const { content: _content, ...metadata } = data as Record<string, unknown>;
+        return {
+          content: [{ type: "text", text: JSON.stringify(metadata, null, 2) }],
+        };
+      }
+
       return {
         content: [
           {
@@ -445,6 +461,185 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
           );
         }
         throw error;
+      }
+    },
+  );
+
+  // GET Recent Files via Dataview
+  tools.register(
+    type({
+      name: '"get_recent_files"',
+      arguments: {
+        days: type("number").describe(
+          "Number of days to look back. For example, 7 returns files modified in the last week.",
+        ),
+        "folder?": type("string").describe(
+          "Limit results to a specific folder (e.g. 'Reuniones', 'Proyectos'). Omit to search the entire vault.",
+        ),
+        "limit?": type("number").describe(
+          "Maximum number of results to return. Defaults to 50.",
+        ),
+      },
+    }).describe(
+      "Get recently modified files in the vault. Returns file name, modification date, creation date, tags, and folder. Useful for weekly reviews, activity summaries, and tracking recent changes.",
+    ),
+    async ({ arguments: args }) => {
+      const folder = args.folder ? `"${args.folder}"` : '""';
+      const limit = args.limit ?? 50;
+      const query = `TABLE file.mtime AS "Modified", file.ctime AS "Created", file.tags AS "Tags", file.folder AS "Folder" FROM ${folder} WHERE file.mtime >= date(now) - dur(${args.days} days) SORT file.mtime DESC LIMIT ${limit}`;
+
+      const data = await makeRequest(
+        LocalRestAPI.ApiSearchResponse,
+        "/search/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/vnd.olrapi.dataview.dql+txt",
+          },
+          body: query,
+        },
+      );
+
+      return {
+        content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+      };
+    },
+  );
+
+  // GET Multiple Vault Files (batch)
+  tools.register(
+    type({
+      name: '"get_vault_files"',
+      arguments: {
+        filenames: type("string[]").describe(
+          "Array of file paths to retrieve (e.g. ['Reuniones/2026-03-18.md', 'Proyectos/Plan.md']).",
+        ),
+        "format?": type('"markdown" | "json"').describe(
+          "Response format for all files. 'markdown' returns raw content. 'json' returns parsed note with frontmatter, tags, and stats. Defaults to 'markdown'.",
+        ),
+        "frontmatterOnly?": type("boolean").describe(
+          "When true and format is 'json', returns only metadata (frontmatter, tags, stats) without the full content body.",
+        ),
+      },
+    }).describe(
+      "Get the content of multiple files from your vault in a single call. Useful for reading several related notes at once (e.g. all meeting notes for a project, multiple research files for synthesis). Each file is returned as a separate result.",
+    ),
+    async ({ arguments: args }) => {
+      const isJson = args.format === "json";
+      const accept = isJson
+        ? "application/vnd.olrapi.note+json"
+        : "text/markdown";
+      const responseType = isJson
+        ? LocalRestAPI.ApiNoteJson
+        : LocalRestAPI.ApiContentResponse;
+
+      const results = await Promise.allSettled(
+        args.filenames.map(async (filename) => {
+          const data = await makeRequest(
+            responseType,
+            `/vault/${encodeURIComponent(filename)}`,
+            { headers: { Accept: accept } },
+          );
+          return { filename, data };
+        }),
+      );
+
+      const content = results.map((result, i) => {
+        const filename = args.filenames[i];
+        if (result.status === "rejected") {
+          return {
+            type: "text" as const,
+            text: `--- ${filename} ---\nError: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+          };
+        }
+
+        let text: string;
+        const { data } = result.value;
+
+        if (args.frontmatterOnly && isJson && typeof data === "object" && data !== null) {
+          const { content: _content, ...metadata } = data as Record<string, unknown>;
+          text = JSON.stringify(metadata, null, 2);
+        } else {
+          text = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+        }
+
+        return {
+          type: "text" as const,
+          text: `--- ${filename} ---\n${text}`,
+        };
+      });
+
+      return { content };
+    },
+  );
+
+  // GET All Tags via Dataview
+  tools.register(
+    type({
+      name: '"list_tags"',
+      arguments: {
+        "folder?": type("string").describe(
+          "Limit to a specific folder. Omit to scan the entire vault.",
+        ),
+        "sort?": type('"name" | "count"').describe(
+          "Sort by tag name or by usage count (descending). Defaults to 'count'.",
+        ),
+      },
+    }).describe(
+      "List all tags used across the vault with their usage count. Useful for discovering content categories, finding related notes, and understanding vault organization.",
+    ),
+    async ({ arguments: args }) => {
+      const folder = args.folder ? `"${args.folder}"` : '""';
+      // Dataview query to collect all tags with file counts
+      const query = `TABLE WITHOUT ID file.tags AS "Tags" FROM ${folder} WHERE file.tags FLATTEN file.tags AS tag`;
+
+      try {
+        const data = await makeRequest(
+          LocalRestAPI.ApiSearchResponse,
+          "/search/",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/vnd.olrapi.dataview.dql+txt",
+            },
+            body: `TABLE file.tags AS "Tags" FROM ${folder} WHERE length(file.tags) > 0`,
+          },
+        );
+
+        // Aggregate tag counts from Dataview results
+        const tagCounts: Record<string, number> = {};
+        for (const entry of data) {
+          const result = entry.result as Record<string, unknown>;
+          const tags = result?.Tags;
+          if (Array.isArray(tags)) {
+            for (const tag of tags) {
+              const tagStr = String(tag);
+              tagCounts[tagStr] = (tagCounts[tagStr] || 0) + 1;
+            }
+          }
+        }
+
+        // Sort by count (default) or name
+        const sorted = Object.entries(tagCounts).sort((a, b) =>
+          args.sort === "name"
+            ? a[0].localeCompare(b[0])
+            : b[1] - a[1],
+        );
+
+        const output = {
+          totalTags: sorted.length,
+          tags: sorted.map(([tag, count]) => ({ tag, count })),
+        };
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Failed to list tags: ${message}. Ensure the Dataview plugin is installed and enabled.`,
+        );
       }
     },
   );
