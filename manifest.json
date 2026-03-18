@@ -4,8 +4,7 @@
   "version": "0.2.27",
   "minAppVersion": "0.15.0",
   "description": "Securely connect Claude Desktop to your vault with semantic search, templates, and file management capabilities.",
-  "author": "Jack Steam",
-  "authorUrl": "https://github.com/jacksteamdev",
-  "fundingUrl": "https://github.com/sponsors/jacksteamdev",
+  "author": "Jack Steam, Marco Pérez (Taiko fork)",
+  "authorUrl": "https://github.com/marcoaperez/obsidian-mcp-tools",
   "isDesktopOnly": true
 }
