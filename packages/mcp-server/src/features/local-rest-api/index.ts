@@ -4,6 +4,25 @@ import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { type } from "arktype";
 import { LocalRestAPI } from "shared";
 
+/**
+ * Maximum content length in characters before automatic truncation.
+ * ~50K chars ≈ ~12K tokens — prevents oversized notes from flooding
+ * the LLM context window. Transcriptions and large documents are
+ * the primary offenders.
+ */
+const MAX_CONTENT_LENGTH = 50_000;
+
+/**
+ * Truncates content that exceeds MAX_CONTENT_LENGTH, appending a
+ * notice with the original size so the caller knows data was cut.
+ */
+function truncateContent(text: string, filename: string): string {
+  if (text.length <= MAX_CONTENT_LENGTH) return text;
+  const truncated = text.slice(0, MAX_CONTENT_LENGTH);
+  const originalKB = Math.round(text.length / 1024);
+  return `${truncated}\n\n---\n⚠️ Content truncated (${originalKB} KB original). Use get_document_map to explore structure, or patch_vault_file to read specific sections of "${filename}".`;
+}
+
 export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
   // GET Status
   tools.register(
@@ -338,8 +357,10 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
         content: [
           {
             type: "text",
-            text:
+            text: truncateContent(
               typeof data === "string" ? data : JSON.stringify(data, null, 2),
+              args.filename,
+            ),
           },
         ],
       };
@@ -560,7 +581,10 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
           const { content: _content, ...metadata } = data as Record<string, unknown>;
           text = JSON.stringify(metadata, null, 2);
         } else {
-          text = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+          text = truncateContent(
+            typeof data === "string" ? data : JSON.stringify(data, null, 2),
+            filename,
+          );
         }
 
         return {
