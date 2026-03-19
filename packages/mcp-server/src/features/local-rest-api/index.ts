@@ -23,6 +23,23 @@ function truncateContent(text: string, filename: string): string {
   return `${truncated}\n\n---\n⚠️ Content truncated (${originalKB} KB original). Use get_document_map to explore structure, or patch_vault_file to read specific sections of "${filename}".`;
 }
 
+/**
+ * Fetches the path of the currently active file in Obsidian.
+ * Used to include the real file path in operation responses.
+ */
+async function getActiveFilePath(): Promise<string> {
+  try {
+    const data = await makeRequest(
+      LocalRestAPI.ApiNoteJson,
+      "/active/",
+      { headers: { Accept: "application/vnd.olrapi.note+json" } },
+    );
+    return data.path;
+  } catch {
+    return "(unknown)";
+  }
+}
+
 export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
   // GET Status
   tools.register(
@@ -77,12 +94,13 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
       },
     }).describe("Update the content of the active file open in Obsidian."),
     async ({ arguments: args }) => {
+      const path = await getActiveFilePath();
       await makeRequest(LocalRestAPI.ApiNoContentResponse, "/active/", {
         method: "PUT",
         body: args.content,
       });
       return {
-        content: [{ type: "text", text: "File updated successfully" }],
+        content: [{ type: "text", text: `File updated successfully: ${path}` }],
       };
     },
   );
@@ -96,12 +114,13 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
       },
     }).describe("Append content to the end of the currently-open note."),
     async ({ arguments: args }) => {
+      const path = await getActiveFilePath();
       await makeRequest(LocalRestAPI.ApiNoContentResponse, "/active/", {
         method: "POST",
         body: args.content,
       });
       return {
-        content: [{ type: "text", text: "Content appended successfully" }],
+        content: [{ type: "text", text: `Content appended successfully to: ${path}` }],
       };
     },
   );
@@ -145,6 +164,7 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
         body = body.replace(/\n*$/, "\n\n");
       }
 
+      const path = await getActiveFilePath();
       try {
         const response = await makeRequest(
           LocalRestAPI.ApiContentResponse,
@@ -157,7 +177,7 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
         );
         return {
           content: [
-            { type: "text", text: "File patched successfully" },
+            { type: "text", text: `File patched successfully: ${path}` },
             { type: "text", text: response },
           ],
         };
@@ -166,7 +186,7 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
         if (message.includes("invalid-target")) {
           throw new McpError(
             ErrorCode.InternalError,
-            `Could not find target "${args.target}" (type: ${args.targetType}, operation: ${args.operation}) in the active file. For headings, use the full path from the root heading delimited by '::' (e.g. 'Heading 1::Subheading'). Check that the heading text matches exactly, including any special characters.`,
+            `Could not find target "${args.target}" (type: ${args.targetType}, operation: ${args.operation}) in "${path}". For headings, use the full path from the root heading delimited by '::' (e.g. 'Heading 1::Subheading'). Check that the heading text matches exactly, including any special characters.`,
           );
         }
         throw error;
@@ -181,11 +201,12 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
       arguments: "Record<string, unknown>",
     }).describe("Delete the currently-active file in Obsidian."),
     async () => {
+      const path = await getActiveFilePath();
       await makeRequest(LocalRestAPI.ApiNoContentResponse, "/active/", {
         method: "DELETE",
       });
       return {
-        content: [{ type: "text", text: "File deleted successfully" }],
+        content: [{ type: "text", text: `File deleted successfully: ${path}` }],
       };
     },
   );
@@ -247,8 +268,13 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
         },
       );
 
+      // Safety limit: cap results at 100 to prevent oversized responses
+      const results = Array.isArray(data) && data.length > 100
+        ? data.slice(0, 100)
+        : data;
+
       return {
-        content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(results, null, 2) }],
       };
     },
   );
