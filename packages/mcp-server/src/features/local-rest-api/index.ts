@@ -921,6 +921,49 @@ export function registerLocalRestApiTools(tools: ToolRegistry, server: Server) {
     },
   );
 
+  // POST Execute Dataview Query
+  tools.register(
+    type({
+      name: '"execute_dataview_query"',
+      arguments: {
+        query: type("string").describe(
+          "A Dataview DQL query string. Supports TABLE, LIST, TASK, and CALENDAR query types. Examples: 'TABLE file.mtime FROM \"Proyectos\"', 'LIST FROM #cliente', 'TASK WHERE !completed'.",
+        ),
+        "sourcePath?": type("string").describe(
+          "Optional vault file path for context-dependent queries (e.g. when using relative links).",
+        ),
+      },
+    }).describe(
+      "Execute a Dataview DQL query against the vault and return structured JSON results. TABLE queries return an array of objects with column headers as keys. LIST queries return an array of file paths. TASK queries return task items. Requires the Dataview plugin. Use this for complex vault queries, aggregations, and data extraction that go beyond simple search.",
+    ),
+    async ({ arguments: args }) => {
+      try {
+        const data = await makeRequest(
+          LocalRestAPI.ApiDataviewQueryResponse,
+          "/dataview/query",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: args.query,
+              ...(args.sourcePath ? { sourcePath: args.sourcePath } : {}),
+            }),
+          },
+        );
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Dataview query failed: ${message}. Ensure the Dataview plugin is installed and enabled in Obsidian.`,
+        );
+      }
+    },
+  );
+
   // DELETE Vault File Content
   tools.register(
     type({

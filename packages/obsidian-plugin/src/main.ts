@@ -14,6 +14,7 @@ import {
 import { setup as setupCore } from "./features/core";
 import { setup as setupMcpServerInstall } from "./features/mcp-server-install";
 import {
+  loadDataviewAPI,
   loadLocalRestAPI,
   loadSmartSearchAPI,
   loadTemplaterAPI,
@@ -59,6 +60,10 @@ export default class McpToolsPlugin extends Plugin {
       this.localRestApi.api
         .addRoute("/templates/execute")
         .post(this.handleTemplateExecution.bind(this));
+
+      this.localRestApi.api
+        .addRoute("/dataview/query")
+        .post(this.handleDataviewQuery.bind(this));
 
       logger.info("MCP Tools Plugin loaded");
     });
@@ -160,6 +165,95 @@ export default class McpToolsPlugin extends Plugin {
         error: "An error occurred while processing the prompt",
       });
       return;
+    }
+  }
+
+  private async handleDataviewQuery(req: Request, res: Response) {
+    try {
+      // Access Dataview API directly — no need for RxJS loader since
+      // if the plugin is installed, its API is available immediately
+      const dvPlugin = this.app.plugins.plugins["dataview"] as any;
+      const dataview = dvPlugin?.api;
+      if (!dataview) {
+        res.status(503).json({
+          error: "Dataview plugin is not available. Please install it from the community plugins.",
+        });
+        return;
+      }
+
+      // Validate request body
+      const params = LocalRestAPI.ApiDataviewQueryParams(req.body);
+      if (params instanceof type.errors) {
+        res.status(400).json({
+          error: "Invalid request body",
+          body: req.body,
+          summary: params.summary,
+        });
+        return;
+      }
+
+      // Timeout to prevent hanging if Dataview is still indexing
+      const result = await Promise.race([
+        dataview.query(params.query, params.sourcePath),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Dataview query timed out after 15s — the vault may still be indexing")), 15000),
+        ),
+      ]);
+
+      if (!result.successful || !result.value) {
+        res.status(400).json({
+          error: result.error ?? "Dataview query failed",
+          query: params.query,
+        });
+        return;
+      }
+
+      const { type: queryType, headers, values } = result.value;
+
+      let data: unknown;
+
+      if (queryType === "table" && headers && values) {
+        // TABLE: convert to array of objects with headers as keys
+        data = values.map((row: unknown[]) => {
+          const obj: Record<string, unknown> = {};
+          // First column is always the file link in Dataview TABLE results
+          for (let i = 0; i < headers.length; i++) {
+            const key = headers[i] || `col${i}`;
+            const val = row[i];
+            // Dataview Link objects → extract path string
+            obj[key] = val && typeof val === "object" && "path" in val
+              ? (val as { path: string }).path
+              : val;
+          }
+          return obj;
+        });
+      } else if (queryType === "list" && values) {
+        // LIST: extract paths from file links
+        data = values.flat().map((val: unknown) =>
+          val && typeof val === "object" && "path" in val
+            ? (val as { path: string }).path
+            : val,
+        );
+      } else if (queryType === "task" && values) {
+        // TASK: return task items as-is
+        data = values;
+      } else {
+        // CALENDAR or unknown: return raw
+        data = values;
+      }
+
+      res.json({
+        queryType: queryType.toUpperCase(),
+        data,
+      });
+    } catch (error) {
+      logger.error("Dataview query error:", {
+        error: error instanceof Error ? error.message : error,
+        body: req.body,
+      });
+      res.status(503).json({
+        error: "An error occurred while executing the Dataview query",
+      });
     }
   }
 

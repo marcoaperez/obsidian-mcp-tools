@@ -56,6 +56,22 @@ declare module "obsidian" {
         ["templater-obsidian"]?: {
           templater?: Templater.ITemplater;
         };
+        ["dataview"]?: {
+          api?: {
+            query: (
+              dql: string,
+              sourcePath?: string,
+            ) => Promise<{
+              successful: boolean;
+              value?: {
+                type: string;
+                headers?: string[];
+                values?: unknown[][];
+              };
+              error?: string;
+            }>;
+          };
+        };
       };
     };
   }

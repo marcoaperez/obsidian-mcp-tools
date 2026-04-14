@@ -299,5 +299,35 @@ export type ApiTemplateExecutionParamsType =
 export type ApiTemplateExecutionResponseType =
   typeof ApiTemplateExecutionResponse.infer;
 
+/**
+ * Parameters for executing a Dataview DQL query
+ * Content-Type: application/json
+ * POST /dataview/query
+ * @property query - A Dataview DQL query string (TABLE, LIST, TASK, or CALENDAR)
+ * @property sourcePath - Optional source file path for context-dependent queries
+ */
+export const ApiDataviewQueryParams = type({
+  query: type("string").describe(
+    "A Dataview DQL query string. Supports TABLE, LIST, TASK, and CALENDAR query types.",
+  ),
+  "sourcePath?": type("string").describe(
+    "Optional vault file path for context-dependent queries (e.g. relative links).",
+  ),
+});
+
+/**
+ * Response from executing a Dataview DQL query
+ * Content-Type: application/json
+ * POST /dataview/query
+ */
+export const ApiDataviewQueryResponse = type({
+  queryType: '"TABLE" | "LIST" | "TASK" | "CALENDAR"',
+  data: "unknown",
+});
+
+export type ApiDataviewQueryParamsType = typeof ApiDataviewQueryParams.infer;
+export type ApiDataviewQueryResponseType =
+  typeof ApiDataviewQueryResponse.infer;
+
 // Additional API response types can be added here
 export const MIME_TYPE_OLRAPI_NOTE_JSON = "application/vnd.olrapi.note+json";

@@ -24,6 +24,21 @@ export interface Dependency<ID extends keyof App["plugins"]["plugins"], API> {
   plugin?: App["plugins"]["plugins"][ID];
 }
 
+export interface DataviewApi {
+  query: (
+    dql: string,
+    sourcePath?: string,
+  ) => Promise<{
+    successful: boolean;
+    value?: {
+      type: string;
+      headers?: string[];
+      values?: unknown[][];
+    };
+    error?: string;
+  }>;
+}
+
 export interface Dependencies {
   "obsidian-local-rest-api": Dependency<
     "obsidian-local-rest-api",
@@ -34,6 +49,7 @@ export interface Dependencies {
     SmartConnections.SmartSearch
   >;
   "templater-obsidian": Dependency<"templater-obsidian", Templater.ITemplater>;
+  dataview: Dependency<"dataview", DataviewApi>;
 }
 
 // Smart Connections v3.0+ uses a Smart Environment architecture instead of window.SmartSearch
@@ -171,6 +187,25 @@ export const loadTemplaterAPI = (plugin: McpToolsPlugin) =>
     distinct(({ installed }) => installed),
   );
 
+export const loadDataviewAPI = (plugin: McpToolsPlugin) =>
+  interval(200).pipe(
+    takeUntil(timer(5000)),
+    map((): Dependencies["dataview"] => {
+      const dvPlugin = plugin.app.plugins.plugins["dataview"] as any;
+      const api: DataviewApi | undefined = dvPlugin?.api;
+      return {
+        id: "dataview",
+        name: "Dataview",
+        required: false,
+        installed: !!api,
+        api,
+        plugin: dvPlugin,
+      };
+    }),
+    takeWhile((dependency) => !dependency.installed, true),
+    distinct(({ installed }) => installed),
+  );
+
 export const loadDependencies = (plugin: McpToolsPlugin) => {
   const dependencies: Dependencies = {
     "obsidian-local-rest-api": {
@@ -194,11 +229,19 @@ export const loadDependencies = (plugin: McpToolsPlugin) => {
       installed: false,
       url: "https://silentvoid13.github.io/Templater/",
     },
+    dataview: {
+      id: "dataview",
+      name: "Dataview",
+      required: false,
+      installed: false,
+      url: "https://blacksmithgu.github.io/obsidian-dataview/",
+    },
   };
   return merge(
     loadLocalRestAPI(plugin),
     loadTemplaterAPI(plugin),
     loadSmartSearchAPI(plugin),
+    loadDataviewAPI(plugin),
   ).pipe(
     scan((acc, dependency) => {
       // @ts-expect-error Dynamic key assignment
