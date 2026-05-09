@@ -1,12 +1,93 @@
 # Handoff — `istefox/obsidian-mcp-connector` (was `obsidian-mcp-tools`)
 
-> **Aggiornato 2026-05-08 mattina presto (folotp round-6 ack + 3-draft batch ship + upstream LRA-port cluster outreach: cycle 6 closed bilateralmente — FR [#88](https://github.com/istefox/obsidian-mcp-connector/issues/88) aperta per `delete_vault_directory` ENOTEMPTY abs-path leak (candidate 0.4.6) — 3 PR squash-merged su `feat/http-embedded` portando HEAD `5599976` 4 commit avanti rispetto a inizio sessione (#89 mock-infra setMockFileStat → #90 #79 LRA port unhardcode → #91 #78 migration UX recurring Notice + localTransport) — fork issue #78 + #79 chiuse manualmente (squash-merge a non-default branch NON triggera auto-close) — upstream cluster LRA-port: 1 fresh outreach (#89 ericmey) + 2 sister-update (#74 vinhltt + #64 dominikblei) — store PR #11919 untouched ✓ coda human review intatta a week 3.6/2-8.)**
+> **Aggiornato 2026-05-09 mattina (sessione "risolviamo le pending una a una": folotp #54 cross-tracker ack — ruleset General narrow `feat/**` → `feat/http-embedded` esatto + cleanup orphan branch `feat/0.4-migration-ux-cleanup` — FR #88 implementation SHIPPED (PR #92 squash commit `e01617f`, Option A errno-keyed, mock realism update + 2 regression-locked test, plugin suite 747→749 +2 net) — issue #88 chiusa manualmente con close-out comment — passive items #4 marcoaperez (day 4/14 silenzio normale, mock-infra ready) + #5 store #11919 (week 3.6/2-8 quiescenza totale 48h, untouched ✓) confermati. HEAD `feat/http-embedded` = `e01617f` (6 commit avanti vs #87 baseline pre-sessione 2026-05-08).**
 >
-> Storico (precedente): **2026-05-06 sera (post-cycle housekeeping + downstream loop close: CHANGELOG `[Unreleased] → [0.4.5]` promote shipped — commit `15c1689`, CI run `25453980713` ✅; markdown-patch v0.4.5 fix landing cross-posted su upstream #83 — comment `4391074182` con cross-credit folotp variant matrix; verifica preliminare 0.3.13 patch NOT NEEDED — `markdown-patch` è dep del LRA plugin esterno non del fork; memoria persistente allineata. CI 0.4.5 verificata green retroattivamente.)**
+> Storico (precedente): **2026-05-08 mattina presto (folotp round-6 ack + 3-draft batch ship + upstream LRA-port cluster outreach: cycle 6 closed bilateralmente — FR [#88](https://github.com/istefox/obsidian-mcp-connector/issues/88) aperta — 3 PR squash-merged #89 mock-infra → #90 #79 LRA port → #91 #78 migration UX — fork issue #78 + #79 chiuse manualmente — upstream cluster LRA-port: 1 fresh outreach #89 ericmey + 2 sister-update #74 vinhltt + #64 dominikblei.)** + **2026-05-06 sera (post-cycle housekeeping + downstream loop close: CHANGELOG `[Unreleased] → [0.4.5]` promote shipped — commit `15c1689`, CI run `25453980713` ✅; markdown-patch v0.4.5 fix landing cross-posted su upstream #83 — comment `4391074182` con cross-credit folotp variant matrix; verifica preliminare 0.3.13 patch NOT NEEDED.)**
 >
 > Storico (anteriore): **2026-05-06 mattina (`0.4.5` SHIPPED — commit `0584a51` + bump `29ae191`, CI [run 25418823490](https://github.com/istefox/obsidian-mcp-connector/actions/runs/25418823490) green ~31s, prerelease:false — folotp #86 fix: ENOENT triplicato su `create_vault_file`/`append_to_vault_file`/`execute_template` parent missing + 2 tool nuovi `create_vault_directory` + `delete_vault_directory`; tools 24→26; minAppVersion 0.15.0 → 1.7.2; suite 731/734 verde; #86 closed con close-out comment).** + **2026-05-05 sera tarda (`0.4.4` SHIPPED — cycle 5 closed: list_tags + get_files_by_tag + get_outgoing_links + get_backlinks; tools 20→24; folotp round-5 clean su 0.4.3 ack-ed; CI [run 25393505832](https://github.com/istefox/obsidian-mcp-connector/actions/runs/25393505832) green; commit `5405716`, tag `0.4.4`, prerelease:false).** `0.4.0` → `0.4.1` → `0.4.2` → `0.4.3` → `0.4.4` → **`0.4.5`** shipped consecutivamente, 6 cycle iterativi (5 soak-driven + 1 feature batch). Documento di passaggio di consegne. Self-contained.
 >
 > **Per il quadro architetturale completo** (gotcha, stack, convenzioni di codice): leggere **`CLAUDE.md`** in radice. Questo file è la sintesi *operativa*; CLAUDE.md è la sintesi *tecnica*.
+
+---
+
+## Decisioni di sessione 2026-05-09 mattina — risolviamo le pending una a una 🧹
+
+**Trigger**: continuazione sessione post-batch del 2026-05-08. Stefano richiede `risolviamo le pending una a una`. Pending list ereditata dall'handoff `fb42a06`: (a) FR #88 implementation candidate 0.4.6, (b) marcoaperez next PR atteso passive, (c) store #11919 monitor passive, (d) ruleset/CLAUDE.md drift decision pendente. Quick delta-check 24h preliminare ha rivelato **1 pending nuovo non visto ieri**: folotp aveva postato 2026-05-07 23:05Z su tracker pubblico #54 cross-link a #86 round-6 con dichiarazione "Closing on round-6 verify here too" — missed durante la sessione precedente perché il sweep ieri si era focalizzato su #86 direct. Pending list aggiornata a 5 item ordinati per priorità.
+
+### Implementazione (5 item chiusi end-to-end)
+
+#### Item #1 — Folotp #54 thank-you-loop (light-touch ack)
+
+[Comment `4412117977`](https://github.com/istefox/obsidian-mcp-connector/issues/54#issuecomment-4412117977) postato sul tracker pubblico `#54`. Shape **light-touch by design**: TL;DR substantive (5/5 verify + 4/4 edges + 3-way carryover sha256 + #74 triangulation) + pointer al detailed reply su `#86`, evitando duplicazione del per-item ack già archiviato. Doppio scopo:
+
+1. Bilateral cycle 6 closure visibile sul tracker pubblico (folotp aveva self-closed lì, mio silenzio sarebbe letto come oversight da altri tester).
+2. **Status signal a beta-tester silenti**: cycles 1→6 all clean + safety surface regression-free byte-exact 0.4.4+0.4.5 — chi legge `#54` senza seguire `#86` ottiene sintesi onesta dello stato 0.4.x.
+
+#### Item #3 — Ruleset General narrow + cleanup branch orfano
+
+Decisione condivisa via AskUserQuestion: **Restringi ruleset a `feat/http-embedded` esatto** (Option A, recommended). Rationale: l'intent originale del ruleset era proteggere `feat/http-embedded` come sister di `main`; allargare a `refs/heads/feat/**` glob era una scelta del setup 2026-05-05 più ampia del necessario, friction su cleanup post-merge dei feature branch derivati (`feat/0.4-*`). CLAUDE.md `Branch protection policy` rimane corretto come scritto.
+
+**Esecuzione PUT API bloccata da policy hook** ("agent-inferred high-severity branch-protection change") — risolto facendo eseguire il comando a Stefano via `! gh api --method PUT ...` prefix (con body JSON in `/tmp/ruleset-update.json` writto dal mio Write tool per evitare heredoc footgun di EOF non a colonna 0). Backup ruleset corrente salvato in `/tmp/ruleset-15960393-backup.json` come safety net.
+
+**State change verificato**: ruleset `15960393.conditions.ref_name.include` da `["~DEFAULT_BRANCH", "refs/heads/feat/**"]` a `["~DEFAULT_BRANCH", "refs/heads/feat/http-embedded"]`. Rules + bypass list invariate. `updated_at: 2026-05-09T11:15:53Z`.
+
+**Cleanup orphan branch ora possibile**: `git push origin --delete feat/0.4-migration-ux-cleanup` ✓ (era stuck dal merge di PR #91 ieri). Final remote: `main` + `feat/http-embedded` + `fix/73-templates-execute-compat-shim` (orphan pre-esistente, fuori scope sessione).
+
+#### Item #2 — FR #88 implementation (Option A errno-keyed)
+
+Branch `fix/0.4-88-delete-dir-abs-path-leak` (off `feat/http-embedded` HEAD `fb42a06`), single commit `32dab3a`, 3 file +79/-5. PR [#92](https://github.com/istefox/obsidian-mcp-connector/pull/92) squash-merged in **`e01617f`**.
+
+**Surface modifiche**:
+
+1. **`deleteVaultDirectory.ts:69-77` catch block** — errno-keyed switch:
+   - `ENOTEMPTY` → `directory not empty (use recursive: "true" to delete it together with its contents)` — caller-actionable hint integrato
+   - `ENOENT` → `directory does not exist`
+   - `EACCES` / `EPERM` → `permission denied`
+   - Unknown errors → fallback a `e.message` / `String(e)` (preserva la "non-Error throw" branch coverage)
+   - Comment esplicativo sul perché del wrap (info-leak reasoning), per ricerca futura
+2. **`test-setup.ts` `adapter.rmdir` mock** — realism update: `MOCK_VAULT_ABS_PREFIX = "/Users/test/Obsidian/MockVault"` constant + `.code` errno set sull'`Error` thrown + path assoluto embedded in entrambi ENOENT e ENOTEMPTY messages. Mirror del real Node behaviour. **Critical insight**: il mock precedente usava shape vault-relative `rmdir '${path}'` — masking del real surface — ed è esattamente perché il bug era sfuggito ai pre-cut test di 0.4.5.
+3. **`deleteVaultDirectory.test.ts` +40 LOC** — 2 nuovi regression-locked test:
+   - `ENOTEMPTY error is errno-keyed and suppresses the absolute host path` — assert actionable hint + `not.toContain("rmdir '")` + cross-platform absolute-path negative match (`/Users/`, `/home/`, `C:\\`)
+   - `ENOENT error is errno-keyed and suppresses the absolute host path` — sister test, locks the symmetric error path
+
+**Test impact**: deleteVaultDirectory 10 → 12 pass (+2 regression-locked). Plugin suite 747 → 749 pass (+2 net), 0 nuove regressioni. 3 fail residui = `bindWithFallback` env flake pre-esistente. `bun run check` clean.
+
+**Issue #88 close-out**: comment [`4412146498`](https://github.com/istefox/obsidian-mcp-connector/issues/88#issuecomment-4412146498) con commit SHA + framing release-flow + ack out-of-scope esplicito su folotp osservazione #2 (`-32603` schema-layer). Manual close (pattern confermato squash-merge a non-default branch non triggera GitHub auto-close, già documentato).
+
+**Branch cleanup**: `fix/0.4-88-delete-dir-abs-path-leak` deleted local + remote ✓ (post-ruleset-narrow `fix/**` non era mai stato bloccato; deletion straight).
+
+#### Item #4 — Marcoaperez next PR (passive recap)
+
+GitHub events public: ultimo signal **2026-05-05 16:18Z** (= merge PR #83 `list_tags` su istefox fork). 4 giorni di silenzio dopo merge. Finestra attesa 1-2 settimane → **day 4/14, silenzio normale stochastic**. Mock-infra `setMockFileStat()` already SHIPPED in `feat/http-embedded` (commit `bf0b25d` PR #89 da ieri) ready a essere consumed quando arriva il prossimo PR (`get_recent_files` / `get_vault_files`-with-stats). Niente da fare.
+
+#### Item #5 — Store PR #11919 (passive recap)
+
+`updatedAt = last_comment_at = 2026-05-07T07:53:00Z` → **48h zero eventi**: no labels change, no reviews, no assignees, no review_requests, no commits push. **Quiescenza totale**. Labels invariate (4: `Changes requested`+`plugin`+`Additional review required`+`Skipped code scan`, tutte da bot). Week 3.6/2-8 silenzio normale. Routine settimanale `trig_015yL8D3VNao7nhRKjBu95ZK` continua. Strategia silenzio = corretta.
+
+### Methodology applied
+
+- **Foundational read-fully-analyze + verify before report** (CLAUDE.md `## Outreach triage methodology` § Foundational): applicata in tutti gli step. Quick delta-check 24h preliminare ha trovato `#54` folotp post che era stato missed nel sweep di ieri perché focalizzato solo su `#86`. Lesson: anche post-pending-list-ereditata, verifica freshness con tool diretto prima di assumere completeness.
+- **Permission hook navigation** (sandbox safety): policy-blocked PUT su ruleset → invece di tentare bypass, ho dato a Stefano un comando self-contained con file body separato e `!` prefix per esecuzione user-side. Pattern: rispetta le policy, non aggirarle, anche quando il blocco è sembra falso-positivo.
+- **Mock realism = test value**: il bug FR #88 sarebbe stato catchato da un mock realistic. Update del mock (mirroring real Node `rmdir` shape: `.code` errno + abs path) non è solo per il regression-lock di questo specifico fix — è un'asymptote di accuracy che paga su future fix nello stesso area di codice.
+- **Errno-keyed > regex-strip**: Option A scelta su Option B perché caller-actionable (`use recursive: "true"` integrato nel messaggio) + zero leak garantito by-design (no regex fragility) + improvement ergonomico per LLM clients che leggeranno l'errore come prompt context.
+
+### State change
+
+- HEAD `feat/http-embedded` = **`e01617f`** (PR #92 squash-merge, +1 commit vs ieri end-of-session `fb42a06`, +6 commit totali vs #87 baseline pre-sessione 2026-05-08)
+- Plugin suite: 747 → **749 pass** (+2 net regression-locked test), 3 fail residui invariati (`bindWithFallback` env flake)
+- Ruleset `General` narrow: `refs/heads/feat/**` → `refs/heads/feat/http-embedded` esatto
+- Branch hygiene final: `main` + `feat/http-embedded` su local + remote (e l'orphan pre-esistente `fix/73-templates-execute-compat-shim` su remote, fuori scope)
+- Issue/PR closures: 1 close-out comment #54 + 1 close manuale #88 + 1 PR #92 merged + 0 nuove issue/FR aperte
+- `manifest.json` + `versions.json` + root `package.json` versions ALL untouched (no release tag, no bump — disciplina "non allungare controllo umano del plugin" rispettata)
+- Memoria persistente: `MEMORY.md` index refreshed + `project_fork_state.md` aggiornato con sezione 2026-05-09
+
+### Pending immediate post-session (al 2026-05-09 mattina)
+
+- **Marcoaperez next PR**: passive, day 4/14, mock-infra ready. Routine implicita di check su events feed.
+- **Store PR #11919**: passive, week 3.6/2-8 quiescenza totale 48h, routine settimanale `trig_015yL8D3VNao7nhRKjBu95ZK` lunedì 2026-05-11. Strategia silenzio mantenuta.
+- **Folotp future cycle**: nessun signal pending. Cycle 6 chiuso bilateralmente, observation #1 shipped, observation #2 confermato out-of-scope. Atteso passive su prossima 0.4.x release o nuova issue da soak.
+- **Branch orfano residuo `fix/73-templates-execute-compat-shim`**: pre-esistente, non bloccante, non in scope sessione. Cancellabile in qualsiasi momento (issue #73 fixata via PR #75 in passato, branch mai pulito); decisione spetta a Stefano.
+- **0.4.6 cut**: triggerato da accumulazione di fix che meritano ship a end-user. Attualmente sul `feat/http-embedded` non ancora released: #79 LRA port + #78 migration UX + #88 abs-path leak. Buon batch per un patch release post-store-accept; pre-store-accept rimane disciplina "no feature creep during review".
 
 ---
 
