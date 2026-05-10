@@ -13,7 +13,7 @@ Two shipping components glued together by the Local REST API plugin:
 
 Why the detour through Local REST API instead of reading `.md` files directly: it preserves Obsidian's metadata cache, respects file locks on open notes, and lets the server invoke other Obsidian plugins (Templater, Smart Connections, Dataview) through their APIs.
 
-Current versions (2026-04-26): **`main` ships 0.3.10** (stable, 20 MCP tools, stdio+binary architecture as described above), **`feat/http-embedded` ships 0.4.0-alpha.4** (in-process HTTP server inside the plugin, no binary; native semantic search via Transformers.js; see § Branch protection policy below). License: MIT.
+Current versions (2026-05-09): **`main` ships 0.3.12** (stable, 20 MCP tools, stdio+binary architecture as described above), **`feat/http-embedded` ships 0.4.5** (released 2026-05-06, 26 MCP tools, in-process HTTP server inside the plugin, no binary; native semantic search via Transformers.js; see § Branch protection policy below). The `0.4.x` line has shipped 6 consecutive cycles (`0.4.0` → `0.4.5`, 5 soak-driven patches + 1 feature batch); a `[Unreleased]` block in `CHANGELOG.md` accumulates the `0.4.6` batch (currently #79 LRA port unhardcode, #78 migration UX, #88 ENOTEMPTY abs-path leak fix). License: MIT.
 
 ### Fork status
 
@@ -21,21 +21,21 @@ Active work happens on the **`istefox/obsidian-mcp-connector`** fork. Upstream `
 
 ### Branch protection policy (2026-04-25, set by Stefano)
 
-**`main` is the production-ready, user-facing branch — currently 0.3.10. Treat it as protected.**
+**`main` is the production-ready, user-facing branch — currently 0.3.12. Treat it as protected.**
 
-Active branches as of 2026-04-25:
+Active branches as of 2026-05-09:
 
 | Branch | Version | Status | Use |
 |---|---|---|---|
-| `main` | **0.3.10** | **PROTECTED** — stable, BRAT users install this | Bug-fix patches only (0.3.x line) |
-| `feat/http-embedded` | **0.4.0-alpha.4** | Active development — Phases 1+2+3 ✅ done, Phase 4 in progress (T1-T11 done; T12-T14 pending) | The HTTP-embedded pivot per `docs/design/2026-04-24-http-embedded-design.md` and `docs/plans/0.4.0-phase-{1,2,3,4}-*.md` |
+| `main` | **0.3.12** | **PROTECTED** — stable, BRAT users install this | Bug-fix patches only (0.3.x line) |
+| `feat/http-embedded` | **0.4.5** (+ `[Unreleased]` batch ready for 0.4.6) | Active dev — Phase 4 ✅ closed, 6 cycle `0.4.x` shipped, batch staged for next cut | The HTTP-embedded pivot per `docs/design/2026-04-24-http-embedded-design.md` and `docs/plans/0.4.0-phase-{1,2,3,4}-*.md` |
 
 **Hard rules — apply unless Stefano explicitly authorizes the specific action:**
 
 1. **Never merge** `feat/http-embedded` (or any experimental branch) **into `main`**. The merge to 0.4.0 happens only when Stefano gives explicit go-ahead, after Phase 2-3-4 are complete and feature parity with 0.3.x is verified.
 2. **Never force-push, rebase, or `reset --hard`** on `main` under any circumstance.
-3. **Never delete or overwrite tags** on the 0.3.x line (0.3.0 through 0.3.10).
-4. **Never delete the `0.3.x` GitHub releases** from the releases page.
+3. **Never delete or overwrite tags** on any `0.x.x` line (covers `0.3.0` through `0.3.12` legacy stable + `0.4.0` through `0.4.5` HTTP-embedded shipped). Enforced by the `tags-protection` ruleset glob `0.*`.
+4. **Never delete `0.3.x` or `0.4.x` GitHub releases** from the releases page.
 5. Bug fixes against 0.3.x are welcome — branch from `main`, PR, merge as 0.3.8 / 0.3.9 etc. This pattern preserves the stable line; it does not replace it.
 6. Merging `main` → `feat/http-embedded` (the inverse direction, to keep the dev branch aligned) is **safe and encouraged** — it does not touch `main`.
 
@@ -295,32 +295,36 @@ Active traps in the current tree. Historical bugs already fixed in the fork are 
 
 3. **`bun run check` at the repo root** (again) — shared-package changes cascade; both runtime packages must still type-check.
 
-## Project status (2026-04-26)
+## Project status (2026-05-09)
 
 Upstream `jacksteamdev/obsidian-mcp-tools` is **officially unmaintained** (declared by @jacksteamdev on issue #79 the 2026-04-24). Recommendation: migrate to MCP over HTTP. Conditional offer: link to any plugin that uses HTTP transport AND is published in the Obsidian community store.
 
 Current state of the fork:
 
-- `main` at **0.3.10**, stable, on BRAT, fully functional (all 20 MCP tools). Protected per the policy above.
-- `feat/http-embedded` at **0.4.0-alpha.4**, Phases 1+2+3 complete + Phase 4 Block A (migration core) + Block B (client config UI) + Block C (modal + first-load wiring) + Block D (Node detection + mcp-remote pre-warm) + Block E.partial (CI on-PR workflow added; release.yml simplification deferred to T14). End-to-end semantic search via Transformers.js verified in vault TEST. Migration UX detects 0.3.x state and offers an opt-in modal at first load.
-- Community plugin store submission `obsidianmd/obsidian-releases#11919` open since 2026-04-13, automated lint cleared on 2026-04-18, awaiting human review.
+- `main` at **0.3.12**, stable, on BRAT, fully functional (20 MCP tools, stdio+binary architecture). Protected per the policy above. HEAD `76fa012` 2026-04-28; tag stack `0.3.0` → `0.3.12`.
+- `feat/http-embedded` at **0.4.5** + `[Unreleased]` batch staged. Tag stack `0.4.0` → `0.4.5` (6 cycle iterativi shipped 2026-05-04 → 2026-05-06: stable cut + 4 soak-driven patches + 1 feature batch). Tools: 26 (base 20 + 1 graph batch in 0.4.4: `list_tags` + `get_files_by_tag` + `get_outgoing_links` + `get_backlinks` + 2 dir tools in 0.4.5: `create_vault_directory` + `delete_vault_directory`). `minAppVersion: 1.7.2`. Live in vault TEST via symlink; BRAT-distributed for community testers (folotp + grimlor + others tracked on issue `#54`).
+- `[Unreleased]` batch on `feat/http-embedded` ready for `0.4.6` cut: #79 LRA port unhardcode (#90), #78 migration UX recurring Notice + `localTransport` field in `get_server_info` (#91), #88 `delete_vault_directory` ENOTEMPTY abs-path leak fix (#92). 0.4.6 cut gated on store PR #11919 acceptance — disciplina "no feature creep during review".
+- Community plugin store submission `obsidianmd/obsidian-releases#11919` open since 2026-04-13, automated lint cleared on 2026-04-18, **awaiting human review at week 4 of 2-8 typical window** (zero reviewer assignment as of 2026-05-09; labels `Changes requested` / `plugin` / `Additional review required` / `Skipped code scan` all from `github-actions[bot]` or `ObsidianReviewBot`, no human maintainer touch). Strategy = silence: any version bump or comment risks resetting the review queue, so post-cut work goes to `feat/http-embedded` without tagging until store accept lands.
 
 ## Pending work
 
 Items in flight, ordered by priority:
 
-1. **Phase 4 — closing tasks** (`feat/http-embedded`): T12 documentation pass (this commit covers the README "0.4.0 alpha" notice and CLAUDE.md status; full README rewrite + CHANGELOG collapse deferred to T13/T14), T13 0.4.0-beta.1 cut after manual E2E matrix, T14 0.4.0 stable + store PR #11919 update + upstream README PR + Discord DM to @jacksteamdev (per his stated conditions).
-2. **Discord DM to @jacksteamdev**: gated on T14 (0.4.0 stable + community store listing live).
-3. **Weekly check on store PR #11919** automated via routine `trig_015yL8D3VNao7nhRKjBu95ZK` (Mondays 07:00 UTC = 09:00 Rome CEST / 08:00 Rome CET). Notifies on real activity, silent on quiet weeks. Three older overlapping routines (`trig_01Lpi3a8jHiisxjDN22D5FSX` weekly duplicate, `trig_011d3JKRDd5v2mvm5wJgyAfB` and `trig_01HnQUut4yNKn3NNMArJSkWH` daily duplicates) disabled 2026-04-25. The hourly issue #79 watcher (`trig_01Dx8sZTD78yBj7buuVYP9KE`) remains active for orthogonal scope.
+1. **Store PR #11919 monitor** — passive wait, week 4/8 silence is normal. Routine `trig_015yL8D3VNao7nhRKjBu95ZK` (Mondays 07:00 UTC = 09:00 Rome CEST / 08:00 Rome CET) checks weekly and notifies only on real activity. The hourly issue `#79` watcher `trig_01Dx8sZTD78yBj7buuVYP9KE` remains active for orthogonal scope. Three older overlapping routines disabled 2026-04-25.
+2. **0.4.6 cut**: triggered by store-accept event. CHANGELOG `[Unreleased]` is populated and ready-to-promote (5 entry: 2 Added + 2 Fixed + 1 Changed). Cut runs through `bun run version patch` + tag push; CI `release.yml` produces release artifacts.
+3. **Marcoaperez next PR** (passive): inventory of 5+ tools agreed (`get_recent_files` / `get_document_map` / `get_periodic_note` family / `execute_dataview_query` / `get_vault_files`). PR #83 `list_tags` shipped 2026-05-05; next contribution stochastic in 1-2 week window. Mock infra `setMockFileStat()` already shipped in `feat/http-embedded` to be consumed when PR arrives.
+4. **Discord DM to @jacksteamdev**: gated on store accept + community listing live (per his stated conditions on issue `#79`).
 
 Items resolved and out of "pending":
 
 - ~~`#3` installer 404 — fixed in 0.3.5, validated by @Metal0gic.~~
 - ~~Maintainership stance — settled by jacksteamdev's 2026-04-24 declaration; we are the continuation maintainer.~~
 - ~~Binary content types for `get_vault_file` — landed in 0.3.4 (#59).~~
-- ~~Phase 1 — HTTP transport infrastructure — landed in 0.4.0-alpha.1.~~
-- ~~Phase 2 — Tool handler migration — landed in 0.4.0-alpha.2/alpha.3.~~
-- ~~Phase 3 — Native semantic search — landed in 0.4.0-alpha.3 / fixed in alpha.4 (`bun.config.ts` redirect onnxruntime-node→onnxruntime-web for Electron renderer).~~
+- ~~Phases 1-4 of the HTTP-embedded pivot — all landed in `0.4.0-alpha.1` through `0.4.0` stable (cut 2026-05-04). Native semantic search via Transformers.js verified end-to-end in vault TEST (alpha-stage `bun.config.ts` redirect `onnxruntime-node` → `onnxruntime-web` for Electron renderer is part of the bundle config).~~
+- ~~Soak rounds 1 → 6 (folotp): all closed, regression-free byte-exact across `0.4.4` + `0.4.5` cuts on the `patch_vault_file` safety surface (`#80` H2-root reject + `#81` block-in-table reject + `#84` block-in-fenced-code reject all preserved in carryover spot-check).~~
+- ~~`patch_vault_file` safety regressions — all reported variants closed: `#76` heading blank-line in `0.4.1`, `#80` + `#81` in `0.4.2`, `#84` in `0.4.3`. Helpers `hasParentH1` + `isInsideTableOrFencedCode` exported from `patchHelpers.ts`.~~
+- ~~Marcoaperez `list_tags` (PR #83) — merged 2026-05-05 in cycle 5, second external maintainer-grade contributor confirmed.~~
+- ~~Folotp `#86` (parent dir mkdirp + 2 dir tools) — shipped in 0.4.5, cycle 6 closed bilaterally.~~
 
 ## Soak preflight: chain identification first
 
