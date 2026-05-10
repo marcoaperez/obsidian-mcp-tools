@@ -23,7 +23,7 @@ Starting with **0.4.0**, the plugin hosts the MCP server **in-process inside Obs
 - **HTTP-native MCP clients** (Claude Code, Cursor, Cline, Continue, Windsurf, VS Code) connect directly to the local HTTP endpoint.
 - **Claude Desktop** (which speaks only stdio MCP) connects through the official `npx mcp-remote` bridge — a two-line config the plugin generates for you.
 - **Native semantic search** runs entirely on-device via Transformers.js + `Xenova/all-MiniLM-L6-v2` (~25 MB, downloaded once and cached). No cloud, no Smart Connections requirement.
-- **Local REST API is now optional**: only the `search_vault` tool (Dataview DQL / JsonLogic queries) needs it, and that tool returns an actionable error if it isn't installed. The other 19 tools work without it. [^4]
+- **Local REST API is now optional**: only the `search_vault` tool (Dataview DQL / JsonLogic queries) needs it, and that tool returns an actionable error if it isn't installed. The other 25 tools work without it. [^4]
 
 ## Features
 
@@ -397,4 +397,4 @@ See [GitHub Releases on this fork](https://github.com/istefox/obsidian-mcp-conne
 [^1]: For information about Claude data privacy and security, see [Claude AI's data usage policy](https://support.anthropic.com/en/articles/8325621-i-would-like-to-input-sensitive-data-into-free-claude-ai-or-claude-pro-who-can-view-my-conversations).
 [^2]: For more information about the Model Context Protocol, see [MCP Introduction](https://modelcontextprotocol.io/introduction).
 [^3]: For a list of available MCP Clients, see [MCP Example Clients](https://modelcontextprotocol.io/clients).
-[^4]: Local REST API was a hard requirement on the 0.3.x line. In 0.4.0 it is optional and only enables the `search_vault` tool (DQL / JsonLogic queries). The other 19 tools work without it; `search_vault` returns an actionable error if it isn't installed.
+[^4]: Local REST API was a hard requirement on the 0.3.x line. Starting with 0.4.0 it is optional and only enables the `search_vault` tool (DQL / JsonLogic queries). The other 25 tools work without it; `search_vault` returns an actionable error if it isn't installed. As of `0.4.5`, `search_vault` reads the LRA host and port from the plugin's live settings instead of a hardcoded `127.0.0.1:27124`, so reconfiguring LRA's listen port no longer requires a plugin restart.
