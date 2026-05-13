@@ -73,6 +73,18 @@
 - Marcoaperez conversion confidence: ~95% → **~98%** (3 PR shipped consecutive + #95 OPEN addressing review feedback + #77 architectural decision request format esemplare)
 - Mia April triage su #77 explicitly reversed publicly (calling Option A in-process)
 
+### Update post-bump 2026-05-13 13:22Z — PR #97 `get_vault_file_partial` SHIPPED + #77 CLOSED ✅✅
+
+Sequence rapida post-folotp-lockin: folotp ack su #77 a 12:24Z → mio reply (Versione B no-delegation) a 12:31Z → marcoaperez **PR #97 OPEN a 13:14Z** (45 min dopo folotp lockin, 43 min dopo mio reply — pickup autonomo dal thread senza che lo dirigessi). PR è esemplare: 783 add/5 del, 6 file, 24 test cases following folotp's prioritization heuristic verbatim (PRIMARY depth frontmatter × 6 + document-map × 5; SECONDARY positive/missing/ambiguous heading × 5 + block × 4; Common × 4). CI green dal primo run — `bun.lock` discipline applicata preventively (citazione esplicita del MED1 da #95 nel test plan). **Marcoaperez ha catturato onestamente il mio off-by-one error** nel #77 decision comment ("27→29 off-by-two" → corretto "27→28 clean +1") — pattern di authority handling esemplare.
+
+Mio APPROVE review postato 13:20Z con 5 design-ack (incl. honest correction acknowledgment esplicito) + 2 LOW non-blocking (empty-segment behavior on path split + block target leading-`^` strip tolerance) + ready-to-merge close-out. Squash merge eseguito 13:21Z, commit [`c9e6dd1`](https://github.com/istefox/obsidian-mcp-connector/commit/c9e6dd1), Author `marcoaperez` preserved + `Authored-by:` trailer. #77 closed manualmente 13:22Z con close-out comment [4441443272](https://github.com/istefox/obsidian-mcp-connector/issues/77#issuecomment-4441443272) (squash-merge non-default-branch + Closes #N gap, pattern continuation da #78/#79/#88).
+
+Tools count: 28 → **29**. README counters updated 4 location (line 26 + 44 + 139 + 402): "27 tools without LRA" → "28 tools" + "28 MCP tools total" → "29". Footnote `[^4]` aligned. "17 typed tools" line 32 preserved (metadata-read non vault-write).
+
+**Marcoaperez conversion ~99% → ~99.5%** (5 PR merged in 8 giorni: #83 + #93 + #94 + #95 + #97, plus 1 architectural decision request format esemplare on #77).
+
+⚠ **Pattern note nuovo (memoria salvata mid-session)**: Stefano feedback critico 2026-05-13: "non voglio contributors per questa app che non è complicata" + "prossimamente prima di delegare una persona a fare qualcosa fammelo notare in modo CHIARO". Memoria `feedback_no_contributor_delegation_obsidian_mcp.md` creata. PR #97 ack è stato draftato seguendo nuova memoria: **NO delegation framing pubblica** (no cluster pointer / no walker invitation / no kickoff). Versione B su #77 folotp ack (no marcoaperez tag) ha funzionato perfettamente — marcoaperez ha picked up autonomamente da thread senza che io l'avessi diretto pubblicamente.
+
 ### Update post-bump 2026-05-13 11:58Z — PR #95 SHIPPED ✅
 
 Marcoaperez ha pushato lockfile fix 16 min dopo mio review (2026-05-13T11:56Z), CI green su retry. Squash-merge eseguito 2026-05-13T11:58Z, commit [`39adf27`](https://github.com/istefox/obsidian-mcp-connector/commit/39adf27) con subject `feat(0.4): get_recent_files review follow-ups (#95)`. Author `marcoaperez <mperez@taikosolutions.com>` preserved + `Authored-by:` trailer. 4 file changed (CHANGELOG.md + bun.lock + getRecentFiles.ts +47/-0 + getRecentFiles.test.ts +59/-1). HEAD `d0e2907 → 39adf27`. Tools count invariato 28 (follow-up non new tool, addresses i 3 LOW del review #94). **Marcoaperez turnaround migliorato vs #93 (40 min) → 16 min**. Conversion confidence ~98% → **~99%**.
