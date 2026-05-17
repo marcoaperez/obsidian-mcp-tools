@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import { globalSettingsMutex } from "$/features/command-permissions";
 import { logger } from "$/shared/logger";
@@ -46,17 +46,22 @@ export type PreWarmResult =
   | { ok: true; entry: PreWarmCacheEntry }
   | { ok: false; error: string };
 
+// (file, args, options) shape — no shell. The npx path is argv[0]; a
+// path with spaces/metacharacters cannot inject because `execFile`
+// passes argv straight to the OS instead of through `/bin/sh -c`.
 export type ExecRunner = (
-  command: string,
+  file: string,
+  args: string[],
   options?: { timeout?: number; env?: NodeJS.ProcessEnv },
 ) => Promise<{ stdout: string; stderr: string }>;
 
-const defaultRunner: ExecRunner = (command, options) => {
-  const exec_ = promisify(exec) as (
-    cmd: string,
+const defaultRunner: ExecRunner = (file, args, options) => {
+  const execFile_ = promisify(execFile) as (
+    f: string,
+    a: string[],
     opts?: { timeout?: number; env?: NodeJS.ProcessEnv },
   ) => Promise<{ stdout: string; stderr: string }>;
-  return exec_(command, options);
+  return execFile_(file, args, options);
 };
 
 type PluginLike = {
@@ -139,8 +144,8 @@ export async function preWarm(
   }
 
   try {
-    // Quote the path so spaces survive the shell.
-    const cmd = `"${npxPath}" -y mcp-remote@latest --help`;
+    // No-shell argv — npxPath is argv[0], not embedded in a shell string.
+    const npxArgs = ["-y", "mcp-remote@latest", "--help"];
 
     // Build the child env. `npx` is a shebang script that re-invokes
     // `node` via `env node`, which does a PATH lookup INSIDE the
@@ -156,7 +161,7 @@ export async function preWarm(
         : {}),
     };
 
-    const { stdout, stderr } = await runner(cmd, {
+    const { stdout, stderr } = await runner(npxPath, npxArgs, {
       timeout: PREWARM_TIMEOUT_MS,
       env,
     });
@@ -182,7 +187,8 @@ export async function preWarm(
         });
       }
     }
-    const version = parseVersionFromHelp(stdout) ?? parseVersionFromHelp(stderr);
+    const version =
+      parseVersionFromHelp(stdout) ?? parseVersionFromHelp(stderr);
     const entry: PreWarmCacheEntry = {
       lastWarmedAt: new Date().toISOString(),
       ...(version ? { version } : {}),

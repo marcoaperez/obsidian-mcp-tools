@@ -12,7 +12,8 @@ import {
  * tests do not depend on the host having Node on PATH and so we can
  * exercise the parsing / error-classification branches deterministically.
  *
- * The real production runner is `promisify(child_process.exec)`. The
+ * The real production runner is promisified `execFile` — a no-shell
+ * `(file, args)` seam (FIX 3: shell-injection hardening). The
  * `status.integration.test.ts` pattern (real shell scripts in tmpdir)
  * is overkill here — we only ever invoke `node --version`, which has
  * a stable contract we can fake at the runner level.
@@ -67,7 +68,9 @@ describe("detectNode — error classification", () => {
 
   test("Windows `not recognized` error → friendly hint", async () => {
     const runner: ExecRunner = async () => {
-      throw new Error("'node' is not recognized as an internal or external command");
+      throw new Error(
+        "'node' is not recognized as an internal or external command",
+      );
     };
     const r = await detectNode({ runner, forceRefresh: true });
     expect(r.found).toBe(false);
@@ -149,16 +152,16 @@ describe("detectNode — caching", () => {
 
 describe("detectNode — canonical-path fallback (launchctl PATH gotcha)", () => {
   test("falls back to /opt/homebrew/bin/node when PATH-based fails", async () => {
-    const calls: string[] = [];
-    const runner: ExecRunner = async (cmd) => {
-      calls.push(cmd);
-      if (cmd === "node --version") {
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const runner: ExecRunner = async (file, args) => {
+      calls.push({ file, args });
+      if (file === "node") {
         throw new Error("spawn node ENOENT");
       }
-      if (cmd.includes("/opt/homebrew/bin/node")) {
+      if (file === "/opt/homebrew/bin/node") {
         return { stdout: "v22.3.0\n", stderr: "" };
       }
-      throw new Error("unexpected runner call: " + cmd);
+      throw new Error("unexpected runner call: " + file);
     };
 
     const r = await detectNode({
@@ -169,21 +172,22 @@ describe("detectNode — canonical-path fallback (launchctl PATH gotcha)", () =>
     });
 
     expect(r).toEqual({ found: true, version: "22.3.0", raw: "v22.3.0\n" });
-    expect(calls[0]).toBe("node --version"); // tried PATH first
-    expect(calls[1]).toContain("/opt/homebrew/bin/node");
+    expect(calls[0]).toEqual({ file: "node", args: ["--version"] }); // PATH first
+    expect(calls[1]?.file).toBe("/opt/homebrew/bin/node");
+    expect(calls[1]?.args).toEqual(["--version"]);
   });
 
   test("scans candidates in order until one matches", async () => {
-    const runner: ExecRunner = async (cmd) => {
-      if (cmd === "node --version") throw new Error("spawn node ENOENT");
-      if (cmd.includes("/opt/homebrew/bin/node")) {
+    const runner: ExecRunner = async (file) => {
+      if (file === "node") throw new Error("spawn node ENOENT");
+      if (file === "/opt/homebrew/bin/node") {
         // Path exists per probe but binary is broken on this run
         throw new Error("unrecognized");
       }
-      if (cmd.includes("/usr/local/bin/node")) {
+      if (file === "/usr/local/bin/node") {
         return { stdout: "v18.20.4\n", stderr: "" };
       }
-      throw new Error("unexpected: " + cmd);
+      throw new Error("unexpected: " + file);
     };
 
     const r = await detectNode({
@@ -210,6 +214,29 @@ describe("detectNode — canonical-path fallback (launchctl PATH gotcha)", () =>
 
     expect(r.found).toBe(false);
     expect(r.found === false && r.error).toMatch(/Node\.js|node --version/i);
+  });
+
+  test("FIX 3: a candidate path with shell metacharacters is passed as argv[0], not interpolated", async () => {
+    // A maliciously-named path must reach the runner as a literal file
+    // argument (no `/bin/sh -c "..."`), so `; rm -rf ~` cannot execute.
+    const evil = "/opt/homebrew/bin/node; rm -rf ~";
+    let received: { file: string; args: string[] } | null = null;
+    const runner: ExecRunner = async (file, args) => {
+      if (file === "node") throw new Error("spawn node ENOENT");
+      received = { file, args };
+      return { stdout: "v20.0.0\n", stderr: "" };
+    };
+
+    const r = await detectNode({
+      runner,
+      forceRefresh: true,
+      candidatePaths: [evil],
+      pathExists: () => true,
+    });
+
+    expect(r).toEqual({ found: true, version: "20.0.0", raw: "v20.0.0\n" });
+    // The full evil string is the literal argv[0] — never split by a shell.
+    expect(received).toEqual({ file: evil, args: ["--version"] });
   });
 });
 

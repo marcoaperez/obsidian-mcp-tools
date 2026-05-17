@@ -1,5 +1,8 @@
 import { describe, expect, test, beforeEach } from "bun:test";
-import { createVaultFileHandler, createVaultFileSchema } from "./createVaultFile";
+import {
+  createVaultFileHandler,
+  createVaultFileSchema,
+} from "./createVaultFile";
 import {
   getMockFolders,
   mockApp,
@@ -76,6 +79,17 @@ describe("create_vault_file tool", () => {
     });
     expect(result.isError).toBeUndefined();
     expect(getMockFolders()).toEqual(["Existing"]);
+  });
+
+  test("FIX 5: returns isError (does not throw) when path is a folder", async () => {
+    setMockFolder("Notes");
+    const app = mockApp();
+    const result = await createVaultFileHandler({
+      arguments: { path: "Notes", content: "x" },
+      app,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/folder, not a file/i);
   });
 
   test("overwrites existing file when target exists", async () => {

@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import { existsSync } from "fs";
 import os from "os";
@@ -43,12 +43,18 @@ export type NodeDetectResult =
       error: string;
     };
 
-export type ExecRunner = (command: string) => Promise<{
+// (file, args) shape — no shell. A binary path containing shell
+// metacharacters (spaces, `;`, `$()`) cannot inject because `execFile`
+// passes argv directly to the OS rather than through `/bin/sh -c`.
+export type ExecRunner = (
+  file: string,
+  args: string[],
+) => Promise<{
   stdout: string;
   stderr: string;
 }>;
 
-const defaultRunner: ExecRunner = promisify(exec) as unknown as ExecRunner;
+const defaultRunner: ExecRunner = promisify(execFile) as unknown as ExecRunner;
 
 let cached: NodeDetectResult | null = null;
 let cachedNodePath: string | null = null;
@@ -113,7 +119,7 @@ export async function detectNode(opts?: {
   // 1. Try PATH-based lookup first — fastest on systems where it works.
   let lastError: string | null = null;
   try {
-    const { stdout } = await runner("node --version");
+    const { stdout } = await runner("node", ["--version"]);
     const version = parseVersion(stdout);
     if (version) {
       cached = { found: true, version, raw: stdout };
@@ -130,8 +136,9 @@ export async function detectNode(opts?: {
   for (const candidate of candidates) {
     if (!probe(candidate)) continue;
     try {
-      // Quote the path so paths with spaces survive the shell.
-      const { stdout } = await runner(`"${candidate}" --version`);
+      // No-shell invocation: the absolute path is argv[0], not embedded
+      // in a shell string, so spaces/metacharacters cannot break out.
+      const { stdout } = await runner(candidate, ["--version"]);
       const version = parseVersion(stdout);
       if (version) {
         cached = { found: true, version, raw: stdout };
@@ -143,7 +150,10 @@ export async function detectNode(opts?: {
     }
   }
 
-  cached = { found: false, error: classifyError(lastError ?? "node --version failed") };
+  cached = {
+    found: false,
+    error: classifyError(lastError ?? "node --version failed"),
+  };
   cachedNodePath = null;
   return cached;
 }
@@ -242,12 +252,14 @@ export async function detectBrew(opts?: {
 
   const tryParse = (stdout: string): BrewDetectResult => {
     const m = /Homebrew\s+(\d+\.\d+\.\d+)/.exec(stdout);
-    return m ? { found: true, version: m[1]! } : { found: true, version: "unknown" };
+    return m
+      ? { found: true, version: m[1]! }
+      : { found: true, version: "unknown" };
   };
 
   // 1. PATH-based.
   try {
-    const { stdout } = await runner("brew --version");
+    const { stdout } = await runner("brew", ["--version"]);
     cachedBrew = tryParse(stdout);
     cachedBrewPath = "brew"; // PATH-based — let the install runner inherit PATH.
     return cachedBrew;
@@ -259,7 +271,7 @@ export async function detectBrew(opts?: {
   for (const candidate of candidates) {
     if (!probe(candidate)) continue;
     try {
-      const { stdout } = await runner(`"${candidate}" --version`);
+      const { stdout } = await runner(candidate, ["--version"]);
       cachedBrew = tryParse(stdout);
       cachedBrewPath = candidate;
       return cachedBrew;

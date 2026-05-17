@@ -45,7 +45,12 @@ describe("fetch tool", () => {
       headers: { "content-type": "text/plain" },
     });
     const result = await fetchHandler({
-      arguments: { url: "https://x.com", format: "html", startIndex: 50, maxLength: 30 },
+      arguments: {
+        url: "https://x.com",
+        format: "html",
+        startIndex: 50,
+        maxLength: 30,
+      },
     });
     const text = result.content[0].text as string;
     expect(text.length).toBeLessThanOrEqual(200); // 30 + truncation hint
@@ -80,6 +85,61 @@ describe("fetch tool", () => {
       arguments: { url: "https://example.com" },
     });
     expect(result.content[0].type).toBe("text");
+  });
+
+  // ── FIX 1: SSRF / local-file-read guard ──────────────────────────────────
+  test.each([
+    ["file:///etc/passwd", /scheme/i],
+    ["data:text/plain,hello", /scheme/i],
+    ["blob:https://x/abc", /scheme/i],
+    ["http://127.0.0.1/admin", /internal|loopback/i],
+    ["http://localhost:8080/", /internal|loopback/i],
+    ["http://10.0.0.5/", /internal|loopback/i],
+    ["http://192.168.1.1/", /internal|loopback/i],
+    ["http://169.254.169.254/latest/meta-data/", /internal|loopback/i],
+    ["http://[::1]/", /internal|loopback/i],
+    ["http://printer.local/", /internal|loopback/i],
+    ["not a url", /invalid url/i],
+  ])("rejects %s without performing a request", async (url, pattern) => {
+    const result = await fetchHandler({ arguments: { url } });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/Fetch rejected/);
+    expect(result.content[0].text).toMatch(pattern);
+  });
+
+  test("accepts a normal public https URL", async () => {
+    setMockRequestUrl("https://example.com", {
+      status: 200,
+      text: "<p>ok</p>",
+      headers: { "content-type": "text/html" },
+    });
+    const result = await fetchHandler({
+      arguments: { url: "https://example.com" },
+    });
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain("ok");
+  });
+
+  // ── FIX 2: maxLength clamp ───────────────────────────────────────────────
+  test("clamps an absurd maxLength to the 500k ceiling", async () => {
+    const text = "Y".repeat(600_000);
+    setMockRequestUrl("https://big.com", {
+      status: 200,
+      text,
+      headers: { "content-type": "text/plain" },
+    });
+    const result = await fetchHandler({
+      arguments: {
+        url: "https://big.com",
+        format: "html",
+        maxLength: 5_000_000,
+      },
+    });
+    const resultText = result.content[0].text as string;
+    // Ceiling is 500_000; the remaining 100_000 chars must be truncated,
+    // so the slice cannot exceed ceiling + the (small) truncation note.
+    expect(resultText).toMatch(/truncated|remaining/i);
+    expect(resultText.length).toBeLessThan(500_000 + 500);
   });
 
   test("defaults maxLength to 5000 if not provided", async () => {

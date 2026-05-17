@@ -1,5 +1,8 @@
 import { describe, expect, test, beforeEach } from "bun:test";
-import { appendToVaultFileHandler, appendToVaultFileSchema } from "./appendToVaultFile";
+import {
+  appendToVaultFileHandler,
+  appendToVaultFileSchema,
+} from "./appendToVaultFile";
 import {
   getMockFolders,
   mockApp,
@@ -12,7 +15,9 @@ beforeEach(() => resetMockVault());
 
 describe("append_to_vault_file tool", () => {
   test("schema declares the tool name", () => {
-    expect(appendToVaultFileSchema.get("name")?.toString()).toContain("append_to_vault_file");
+    expect(appendToVaultFileSchema.get("name")?.toString()).toContain(
+      "append_to_vault_file",
+    );
   });
 
   test("appends to existing file with newline normalization", async () => {
@@ -51,6 +56,17 @@ describe("append_to_vault_file tool", () => {
     const file = app.vault.getAbstractFileByPath("Logs/2026/05/today.md");
     expect(file).not.toBeNull();
     expect(await app.vault.read(file as never)).toBe("First\n\n");
+  });
+
+  test("FIX 5: returns isError (does not throw) when path is a folder", async () => {
+    setMockFolder("Logs");
+    const app = mockApp();
+    const result = await appendToVaultFileHandler({
+      arguments: { path: "Logs", content: "x" },
+      app,
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/folder, not a file/i);
   });
 
   test("does NOT call createFolder on the modify branch — folder set unchanged", async () => {

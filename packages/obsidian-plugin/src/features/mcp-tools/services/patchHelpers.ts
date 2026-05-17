@@ -144,6 +144,75 @@ export function hasParentH1(lines: string[], headingLine: number): boolean {
 }
 
 /**
+ * Precompute, in a single O(n) pass, whether each line sits inside an
+ * open fenced code block — i.e. `fenceOpen[i]` is the value the old
+ * `count ``` up to lineIdx` loop would have produced for `lineIdx = i`.
+ * Used so a range scan does not rescan from line 0 per line (was O(n²)).
+ */
+function computeFenceOpenState(lines: string[]): boolean[] {
+  const fenceOpen: boolean[] = new Array(lines.length);
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    // The toggle at line `i` affects lines AFTER `i`, exactly matching
+    // the original `for (i = 0; i < lineIdx; i++)` semantics.
+    fenceOpen[i] = inFence;
+    if (lines[i].trim().startsWith("```")) inFence = !inFence;
+  }
+  return fenceOpen;
+}
+
+/**
+ * The per-line table/fence check, consulting a precomputed fence-open
+ * array instead of rescanning from line 0. Behaviour is byte-identical
+ * to the original single-function form.
+ */
+function isInsideTableOrFencedCodeAt(
+  lines: string[],
+  lineIdx: number,
+  fenceOpen: boolean[],
+): boolean {
+  if (lineIdx < 0 || lineIdx >= lines.length) return false;
+
+  // Boundary case: the line itself is a fence delimiter. The splice would
+  // either consume the opener (orphaning the closer) or vice versa, leaving
+  // the file structurally invalid. Treat as "inside" for gating purposes.
+  // Surfaced by fork #84 where the regex fallback findBlockReferenceInContent
+  // walks back from `^block-id` and captures the opening fence as startLine
+  // — the count-up-to-lineIdx loop below misses it because the toggle would
+  // happen AT lineIdx, not before. Symmetric to the table separator-row
+  // handling at the bottom of this function.
+  if (lines[lineIdx].trim().startsWith("```")) return true;
+
+  // Fenced code block: precomputed open-state up to lineIdx.
+  if (fenceOpen[lineIdx]) return true;
+
+  // Markdown table: target line itself must be a table row.
+  const target = lines[lineIdx].trim();
+  const isTableRow = (s: string) => s.startsWith("|") && s.endsWith("|");
+  // Separator row signature: pipes + dashes + optional colons (alignment),
+  // no other content. Matches `|---|---|`, `| --- | --- |`, `|:--:|---:|`.
+  const isSeparator = (s: string) =>
+    /^\|[\s:|-]+\|$/.test(s) && s.includes("---");
+  if (!isTableRow(target)) return false;
+  // Target is itself the separator row → trivially inside a table.
+  if (isSeparator(target)) return true;
+
+  // Walk up looking for separator (the data-row case: target is below it).
+  for (let i = lineIdx - 1; i >= 0; i--) {
+    const t = lines[i].trim();
+    if (t === "" || !isTableRow(t)) break;
+    if (isSeparator(t)) return true;
+  }
+  // Walk down looking for separator (the header-row case: target is above it).
+  for (let i = lineIdx + 1; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t === "" || !isTableRow(t)) break;
+    if (isSeparator(t)) return true;
+  }
+  return false;
+}
+
+/**
  * Detect whether a given line is inside a markdown table (between a header
  * row and the surrounding data rows, with a `|---|...|` separator) or
  * inside a fenced code block (between matching ``` markers). Used by the
@@ -181,49 +250,11 @@ export function isInsideTableOrFencedCode(
   lines: string[],
   lineIdx: number,
 ): boolean {
-  if (lineIdx < 0 || lineIdx >= lines.length) return false;
-
-  // Boundary case: the line itself is a fence delimiter. The splice would
-  // either consume the opener (orphaning the closer) or vice versa, leaving
-  // the file structurally invalid. Treat as "inside" for gating purposes.
-  // Surfaced by fork #84 where the regex fallback findBlockReferenceInContent
-  // walks back from `^block-id` and captures the opening fence as startLine
-  // — the count-up-to-lineIdx loop below misses it because the toggle would
-  // happen AT lineIdx, not before. Symmetric to the table separator-row
-  // handling at the bottom of this function.
-  if (lines[lineIdx].trim().startsWith("```")) return true;
-
-  // Fenced code block: count ``` markers up to lineIdx.
-  let inFence = false;
-  for (let i = 0; i < lineIdx; i++) {
-    if (lines[i].trim().startsWith("```")) inFence = !inFence;
-  }
-  if (inFence) return true;
-
-  // Markdown table: target line itself must be a table row.
-  const target = lines[lineIdx].trim();
-  const isTableRow = (s: string) => s.startsWith("|") && s.endsWith("|");
-  // Separator row signature: pipes + dashes + optional colons (alignment),
-  // no other content. Matches `|---|---|`, `| --- | --- |`, `|:--:|---:|`.
-  const isSeparator = (s: string) =>
-    /^\|[\s:|-]+\|$/.test(s) && s.includes("---");
-  if (!isTableRow(target)) return false;
-  // Target is itself the separator row → trivially inside a table.
-  if (isSeparator(target)) return true;
-
-  // Walk up looking for separator (the data-row case: target is below it).
-  for (let i = lineIdx - 1; i >= 0; i--) {
-    const t = lines[i].trim();
-    if (t === "" || !isTableRow(t)) break;
-    if (isSeparator(t)) return true;
-  }
-  // Walk down looking for separator (the header-row case: target is above it).
-  for (let i = lineIdx + 1; i < lines.length; i++) {
-    const t = lines[i].trim();
-    if (t === "" || !isTableRow(t)) break;
-    if (isSeparator(t)) return true;
-  }
-  return false;
+  return isInsideTableOrFencedCodeAt(
+    lines,
+    lineIdx,
+    computeFenceOpenState(lines),
+  );
 }
 
 /**
@@ -255,8 +286,11 @@ export function isBlockRangeStructurallyUnsafe(
   startLine: number,
   endLine: number,
 ): boolean {
+  // Single O(n) fence pass shared across the range — previously each
+  // iteration rescanned from line 0, making this O(n²) on large files.
+  const fenceOpen = computeFenceOpenState(lines);
   for (let i = startLine; i <= endLine; i++) {
-    if (isInsideTableOrFencedCode(lines, i)) return true;
+    if (isInsideTableOrFencedCodeAt(lines, i, fenceOpen)) return true;
   }
   return false;
 }
@@ -481,7 +515,10 @@ export async function applyPatch(
   app: App,
   file: TFile,
   args: PatchArgs,
-): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+): Promise<{
+  content: Array<{ type: "text"; text: string }>;
+  isError?: boolean;
+}> {
   const targetDelimiter = args.targetDelimiter ?? "::";
   // Default createTargetIfMissing: true for heading/frontmatter, false for block
   // (see issue #71 — block in table is not indexed by metadataCache).
@@ -501,7 +538,11 @@ export async function applyPatch(
     await app.fileManager.processFrontMatter(file, (fm) => {
       const existing = fm[args.target];
       if (args.operation === "replace") {
-        const plan = planFrontmatterReplace(existing, args.content, args.target);
+        const plan = planFrontmatterReplace(
+          existing,
+          args.content,
+          args.target,
+        );
         if (plan.kind === "reject") {
           rejection = plan.message;
           return;
@@ -547,7 +588,11 @@ export async function applyPatch(
     // matches even when the heading is nested (e.g. "A" → "Top::A").
     let resolvedTarget = args.target;
     if (!args.target.includes(targetDelimiter)) {
-      const fullPath = resolveHeadingPath(rawContent, args.target, targetDelimiter);
+      const fullPath = resolveHeadingPath(
+        rawContent,
+        args.target,
+        targetDelimiter,
+      );
       if (fullPath) resolvedTarget = fullPath;
     }
 
@@ -567,7 +612,9 @@ export async function applyPatch(
       // Heading not found — respect createTargetIfMissing.
       if (!createIfMissing) {
         return {
-          content: [{ type: "text", text: `Heading not found: ${args.target}` }],
+          content: [
+            { type: "text", text: `Heading not found: ${args.target}` },
+          ],
           isError: true,
         };
       }
@@ -579,13 +626,17 @@ export async function applyPatch(
 
     // Find the end of this heading's section: the next heading of same or
     // higher level (lower number means higher in hierarchy), or EOF.
-    const headingLevel = (lines[headingLine].match(/^(#+)/))?.[1].length ?? 1;
+    const headingLevel = lines[headingLine].match(/^(#+)/)?.[1].length ?? 1;
 
     // 0.3.9 #16 parity: reject root-orphan H2+ when createTargetIfMissing=false.
     // The legacy LRA chain enforced this via markdown-patch's indexer; the
     // 0.4.0 in-process port missed the gate (folotp round-3 regression on
     // the actual HTTP-embedded chain — see fork #80, #83).
-    if (headingLevel >= 2 && !createIfMissing && !hasParentH1(lines, headingLine)) {
+    if (
+      headingLevel >= 2 &&
+      !createIfMissing &&
+      !hasParentH1(lines, headingLine)
+    ) {
       return {
         content: [
           {

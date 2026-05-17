@@ -95,7 +95,9 @@ describe("execute_template tool", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toMatch(/templater|not available|not installed/i);
+    expect(result.content[0].text).toMatch(
+      /templater|not available|not installed/i,
+    );
   });
 
   test("returns error when template file not found in vault", async () => {
@@ -163,7 +165,8 @@ describe("execute_template tool", () => {
     expect(parsed.path).toBe("Output/note.md");
 
     // Verify the file was actually created in the mock vault
-    const createdFile = plugin.app.vault.getAbstractFileByPath("Output/note.md");
+    const createdFile =
+      plugin.app.vault.getAbstractFileByPath("Output/note.md");
     expect(createdFile).not.toBeNull();
   });
 
@@ -243,6 +246,79 @@ describe("execute_template tool", () => {
       undefined,
     );
     expect((result as Record<string, unknown>).mcpTools).toBeUndefined();
+  });
+
+  test("FIX 4: concurrent execute_template calls are serialized (no patch/restore race)", async () => {
+    setMockFile("a.md", "X");
+
+    // A templater whose render is async + slow, and which actually
+    // invokes the patched generate_object so each call observes the
+    // accessor THAT call installed. If the mutex were absent, call B's
+    // patch (and finally-restore) would interleave with call A's render
+    // and one of them would see the wrong / restored generate_object.
+    function makeRacyTemplater() {
+      const seen: string[] = [];
+      const t = {
+        functions_generator: {
+          generate_object: async (): Promise<Record<string, unknown>> => ({}),
+        },
+        create_running_config: () => ({}),
+        read_and_parse_template: async () => {
+          // Render reaches into the (currently-patched) generate_object
+          // and records which prompt accessor is live right now.
+          const fns = await t.functions_generator.generate_object();
+          const accessor = (fns as { mcpTools?: { prompt: PromptArg } })
+            .mcpTools?.prompt;
+          // Yield so a second concurrent call would interleave here if
+          // the critical section were not serialized.
+          await new Promise((r) => setTimeout(r, 10));
+          seen.push(accessor ? accessor("who") : "<none>");
+          await new Promise((r) => setTimeout(r, 10));
+          // Read again AFTER the yield: must still be this call's accessor.
+          const fns2 = await t.functions_generator.generate_object();
+          const accessor2 = (fns2 as { mcpTools?: { prompt: PromptArg } })
+            .mcpTools?.prompt;
+          seen.push(accessor2 ? accessor2("who") : "<none>");
+          return "RENDERED";
+        },
+        _seen: seen,
+      };
+      return t;
+    }
+    type PromptArg = (name: string) => string;
+
+    const fakeTemplater = makeRacyTemplater();
+    const plugin = mockPluginWithTemplater(
+      fakeTemplater as unknown as ReturnType<typeof makeFakeTemplater>,
+    );
+
+    const callA = executeTemplateHandler({
+      arguments: { templatePath: "a.md", arguments: { who: "A" } },
+      app: plugin.app,
+      plugin,
+    });
+    const callB = executeTemplateHandler({
+      arguments: { templatePath: "a.md", arguments: { who: "B" } },
+      app: plugin.app,
+      plugin,
+    });
+
+    const [rA, rB] = await Promise.all([callA, callB]);
+    expect(rA.isError).toBeUndefined();
+    expect(rB.isError).toBeUndefined();
+
+    // Serialized → each pair of reads is internally consistent: the
+    // first call sees [X, X], the second sees [Y, Y] (never [A, B] or
+    // [<none>, …] which a patch/restore race would produce).
+    expect(fakeTemplater._seen).toHaveLength(4);
+    const [a1, a2, b1, b2] = fakeTemplater._seen;
+    expect(a1).toBe(a2);
+    expect(b1).toBe(b2);
+    expect(new Set(fakeTemplater._seen)).toEqual(new Set(["A", "B"]));
+
+    // generate_object fully restored (non-injecting) after both finish.
+    const restored = await fakeTemplater.functions_generator.generate_object();
+    expect((restored as Record<string, unknown>).mcpTools).toBeUndefined();
   });
 
   test("issue #19: read_and_parse_template error surfaces as isError result with verbatim message (no double prefix)", async () => {

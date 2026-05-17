@@ -29,6 +29,20 @@ export async function createVaultFileHandler(
 }> {
   const existing = ctx.app.vault.getAbstractFileByPath(ctx.arguments.path);
   if (existing) {
+    // A folder at this path would make `vault.modify(... as TFile)` throw
+    // an uncaught error, bypassing the isError contract. Duck-type the
+    // same way the directory tools do (TFolder has `children`).
+    if ((existing as { children?: unknown }).children !== undefined) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Path ${ctx.arguments.path} is a folder, not a file.`,
+          },
+        ],
+        isError: true,
+      };
+    }
     await ctx.app.vault.modify(existing as TFile, ctx.arguments.content);
   } else {
     await ensureParentFolderExists(ctx.app, ctx.arguments.path);

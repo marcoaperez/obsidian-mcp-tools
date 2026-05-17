@@ -22,11 +22,28 @@ export type AppendToVaultFileContext = {
 
 export async function appendToVaultFileHandler(
   ctx: AppendToVaultFileContext,
-): Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }> {
+): Promise<{
+  content: Array<{ type: "text"; text: string }>;
+  isError?: boolean;
+}> {
   const normalized = normalizeAppendBody(ctx.arguments.content, "append");
   const existing = ctx.app.vault.getAbstractFileByPath(ctx.arguments.path);
 
   if (existing) {
+    // A folder here would make `vault.read(... as TFile)` throw an
+    // uncaught error, bypassing the isError contract. Duck-type the
+    // same way the directory tools do (TFolder has `children`).
+    if ((existing as { children?: unknown }).children !== undefined) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Path ${ctx.arguments.path} is a folder, not a file.`,
+          },
+        ],
+        isError: true,
+      };
+    }
     const tfile = existing as TFile;
     const current = await ctx.app.vault.read(tfile);
     await ctx.app.vault.modify(tfile, current + normalized);

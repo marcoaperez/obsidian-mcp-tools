@@ -1,9 +1,5 @@
 import { describe, expect, test, spyOn } from "bun:test";
-import {
-  getPreWarmCache,
-  preWarm,
-  type ExecRunner,
-} from "./preWarm";
+import { getPreWarmCache, preWarm, type ExecRunner } from "./preWarm";
 import { logger } from "$/shared/logger";
 
 /** Regex for the scary child-process stack trace we must NOT echo. */
@@ -77,6 +73,25 @@ describe("preWarm — success path", () => {
     expect(cached?.lastWarmedAt).toBe(
       result.ok ? result.entry.lastWarmedAt : "",
     );
+  });
+
+  test("FIX 3: npx path is argv[0] and args are a fixed array (no shell string)", async () => {
+    const p = fakePlugin({});
+    // A path with a shell metacharacter must reach the runner verbatim
+    // as the file argument — never concatenated into a `/bin/sh -c` line.
+    const evilNpx = "/Users/a b/npx; touch /tmp/pwned";
+    let received: { file: string; args: string[] } | null = null;
+    const runner: ExecRunner = async (file, args) => {
+      received = { file, args };
+      return { stdout: "mcp-remote 1.0.0", stderr: "" };
+    };
+
+    const result = await preWarm(p, { runner, npxPath: evilNpx });
+    expect(result.ok).toBe(true);
+    expect(received).toEqual({
+      file: evilNpx,
+      args: ["-y", "mcp-remote@latest", "--help"],
+    });
   });
 
   test("succeeds even when version cannot be parsed", async () => {
