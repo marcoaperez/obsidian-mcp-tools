@@ -197,9 +197,32 @@ export async function getVaultFilePartialHandler(
   if (mode === "frontmatter") {
     const fm = cache.frontmatter;
     if (!fm || Object.keys(fm).length === 0) {
-      return errorResponse(
-        `File has no frontmatter: ${filename}.`,
-      );
+      // This tool reflects Obsidian's MetadataCache and never re-parses
+      // YAML independently — a second parser would diverge from what the
+      // rest of Obsidian (UI, Linter, other plugins) sees (#138). When the
+      // cache is empty, disambiguate "genuinely no frontmatter" from "a
+      // frontmatter block exists but Obsidian's own parser dropped it" so
+      // the error is actionable instead of misleading.
+      const fmLines = (await ctx.app.vault.cachedRead(file)).split("\n");
+      let blockHasContent = false;
+      if (fmLines[0]?.trim() === "---") {
+        let closeIdx = -1;
+        for (let i = 1; i < fmLines.length; i++) {
+          if (fmLines[i].trim() === "---") {
+            closeIdx = i;
+            break;
+          }
+        }
+        const region =
+          closeIdx === -1 ? fmLines.slice(1) : fmLines.slice(1, closeIdx);
+        blockHasContent = region.some((l) => l.trim() !== "");
+      }
+      if (blockHasContent) {
+        return errorResponse(
+          `Frontmatter block present in ${filename} but Obsidian's metadata cache exposed no fields — its YAML parser could not read it. Common cause: an unquoted scalar whose value contains ": " (e.g. \`key: a value with: a colon\`); quote the value (\`key: "a value with: a colon"\`). This tool reflects Obsidian's cache and does not re-parse YAML independently, so the source file must be fixed.`,
+        );
+      }
+      return errorResponse(`File has no frontmatter: ${filename}.`);
     }
     const key = target!.trim();
     if (!(key in fm)) {
