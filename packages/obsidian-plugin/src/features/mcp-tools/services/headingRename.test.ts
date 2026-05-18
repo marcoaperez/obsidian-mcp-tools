@@ -104,25 +104,25 @@ describe("headingRename — checkHeadingCollision (RFC edge case #1)", () => {
 describe("headingRename — rewriteSourceHeadingLine", () => {
   test("replaces the heading text while preserving the `#` prefix", () => {
     const lines = ["## Old", "body"];
-    const out = rewriteSourceHeadingLine(lines, 0, "New");
+    const out = rewriteSourceHeadingLine(lines, 0, "New", 2);
     expect(out).toEqual(["## New", "body"]);
   });
 
   test("preserves trailing block-id suffix (^abc)", () => {
     const lines = ["### Old ^abc-123", "body"];
-    const out = rewriteSourceHeadingLine(lines, 0, "Renamed");
+    const out = rewriteSourceHeadingLine(lines, 0, "Renamed", 3);
     expect(out).toEqual(["### Renamed ^abc-123", "body"]);
   });
 
   test("preserves leading whitespace on the heading line", () => {
     const lines = ["  ## Old"];
-    const out = rewriteSourceHeadingLine(lines, 0, "New");
+    const out = rewriteSourceHeadingLine(lines, 0, "New", 2);
     expect(out).toEqual(["  ## New"]);
   });
 
   test("preserves trailing whitespace", () => {
     const lines = ["## Old   "];
-    const out = rewriteSourceHeadingLine(lines, 0, "New");
+    const out = rewriteSourceHeadingLine(lines, 0, "New", 2);
     expect(out).toEqual(["## New   "]);
   });
 });
@@ -276,6 +276,76 @@ describe("headingRename — rewriteBacklinker", () => {
     );
     expect(r.newText).toBe("Look at [[source#C|D|alias]] here.");
     expect(r.rewriteCount).toBe(1);
+  });
+});
+
+describe("headingRename — rewriteBacklinker fenced-code guard (#143 C2)", () => {
+  test("C2: a wikilink inside a ``` fenced block is NOT rewritten", () => {
+    const text = [
+      "Real: [[source#Old]] here.",
+      "```",
+      "Code sample: [[source#Old]] is literal text.",
+      "```",
+      "After: [[source#Old]] again.",
+    ].join("\n");
+    const r = rewriteBacklinker(
+      text,
+      "Old",
+      "New",
+      "source.md",
+      "back.md",
+      resolveBasic,
+    );
+    expect(r.newText).toBe(
+      [
+        "Real: [[source#New]] here.",
+        "```",
+        "Code sample: [[source#Old]] is literal text.",
+        "```",
+        "After: [[source#New]] again.",
+      ].join("\n"),
+    );
+    expect(r.rewriteCount).toBe(2);
+  });
+
+  test("C2: a markdown link inside a ~~~ fenced block is NOT rewritten", () => {
+    const text = ["~~~", "[doc](source.md#Old)", "~~~", "[doc](source.md#Old)"].join(
+      "\n",
+    );
+    const r = rewriteBacklinker(
+      text,
+      "Old",
+      "New",
+      "source.md",
+      "back.md",
+      resolveBasic,
+    );
+    expect(r.newText).toBe(
+      ["~~~", "[doc](source.md#Old)", "~~~", "[doc](source.md#New)"].join("\n"),
+    );
+    expect(r.rewriteCount).toBe(1);
+  });
+
+  test("H4: a renamed heading containing [ ] is URL-encoded in markdown links", () => {
+    const r = rewriteBacklinker(
+      "See [doc](source.md#Old).",
+      "Old",
+      "New [1]",
+      "source.md",
+      "back.md",
+      resolveBasic,
+    );
+    expect(r.newText).toBe("See [doc](source.md#New%20%5B1%5D).");
+    expect(r.rewriteCount).toBe(1);
+  });
+});
+
+describe("headingRename — rewriteSourceHeadingLine level fallback (#143 H2)", () => {
+  test("H2: regex-miss fallback uses the known level, not hardcoded H1", () => {
+    // `##Old` (no space after the hashes) does not match the heading-line
+    // regex, so the fallback path is taken. It must emit the real level.
+    const out = rewriteSourceHeadingLine(["##Old", "body"], 0, "New", 2);
+    expect(out).toEqual(["## New", "body"]);
   });
 });
 

@@ -181,8 +181,18 @@ export async function renameHeadingHandler(
   const failedFiles: Array<{ path: string; error: string }> = [];
 
   // Source first — if the source write fails, no backlinker has been
-  // touched yet, so the file system is unchanged.
+  // touched yet, so the file system is unchanged. TOCTOU guard: the plan
+  // was built from a snapshot; if the file changed since (live editing in
+  // Obsidian), abort rather than clobber the concurrent edit.
   try {
+    const sourceNow = await ctx.app.vault.cachedRead(sourceFile);
+    if (sourceNow !== sourceText) {
+      return errorResponse({
+        errorCode: "source-write-failed",
+        message:
+          "Source file changed between plan and apply; aborted before any write to avoid overwriting a concurrent edit. Re-run the rename.",
+      });
+    }
     await ctx.app.vault.modify(sourceFile, plan.source.newText);
     updatedFiles.push(plan.source.path);
   } catch (e) {
@@ -202,6 +212,19 @@ export async function renameHeadingHandler(
       continue;
     }
     try {
+      // TOCTOU guard: the patch was computed from the plan-phase snapshot.
+      // If the file changed since, do NOT write the stale patch — surface
+      // it as a failed file so the caller can re-run, not a silent
+      // lost update.
+      const currentText = await ctx.app.vault.cachedRead(f);
+      if (currentText !== backlinkerTexts[bp.path]) {
+        failedFiles.push({
+          path: bp.path,
+          error:
+            "File changed between plan and apply; left untouched to avoid overwriting a concurrent edit. Re-run the rename.",
+        });
+        continue;
+      }
       await ctx.app.vault.modify(f, bp.newText);
       updatedFiles.push(bp.path);
     } catch (e) {

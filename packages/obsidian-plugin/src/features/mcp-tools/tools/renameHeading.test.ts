@@ -9,6 +9,8 @@ import {
   setMockFile,
   setMockMetadata,
   setMockResolvedLinks,
+  setMockModifyFail,
+  setMockReadMutation,
 } from "$/test-setup";
 
 beforeEach(() => resetMockVault());
@@ -234,5 +236,80 @@ describe("rename_heading tool", () => {
     expect(r.isError).toBeUndefined();
     const payload = JSON.parse(r.content[0].text);
     expect(payload.linkRewriteCount).toBe(2);
+  });
+
+  // ── #143 hardening: partial-failure (M2) + TOCTOU guard (H3) ──────────
+  test("M2: a backlinker write failure surfaces partial-failure with both lists", async () => {
+    setMockFile("source.md", "## Old\nbody");
+    setMockFile("ok.md", "Ref [[source#Old]].");
+    setMockFile("bad.md", "Ref [[source#Old]].");
+    setMockMetadata("source.md", {
+      headings: [{ heading: "Old", level: 2, line: 0 }],
+    });
+    setMockResolvedLinks("ok.md", { "source.md": 1 });
+    setMockResolvedLinks("bad.md", { "source.md": 1 });
+    setMockModifyFail("bad.md");
+
+    const r = await renameHeadingHandler({
+      arguments: { path: "source.md", from: { text: "Old" }, to: "New" },
+      app: mockApp(),
+    });
+    expect(r.isError).toBe(true);
+    const payload = JSON.parse(r.content[0].text);
+    expect(payload.errorCode).toBe("partial-failure");
+    expect(payload.updatedFiles.sort()).toEqual(["ok.md", "source.md"]);
+    expect(payload.failedFiles.map((f: { path: string }) => f.path)).toEqual([
+      "bad.md",
+    ]);
+  });
+
+  test("H3: a backlinker changed between plan and apply is not clobbered (partial-failure)", async () => {
+    setMockFile("source.md", "## Old\nbody");
+    setMockFile("back.md", "Ref [[source#Old]].");
+    setMockMetadata("source.md", {
+      headings: [{ heading: "Old", level: 2, line: 0 }],
+    });
+    setMockResolvedLinks("back.md", { "source.md": 1 });
+    // back.md is read once during planning, then mutates before apply.
+    setMockReadMutation("back.md", "Concurrently edited by the user.");
+
+    const r = await renameHeadingHandler({
+      arguments: { path: "source.md", from: { text: "Old" }, to: "New" },
+      app: mockApp(),
+    });
+    expect(r.isError).toBe(true);
+    const payload = JSON.parse(r.content[0].text);
+    expect(payload.errorCode).toBe("partial-failure");
+    expect(payload.failedFiles.map((f: { path: string }) => f.path)).toEqual([
+      "back.md",
+    ]);
+    // The concurrent edit must be preserved, not overwritten.
+    const back = mockApp().vault.getAbstractFileByPath("back.md");
+    expect(await mockApp().vault.read(back as never)).toBe(
+      "Concurrently edited by the user.",
+    );
+  });
+
+  test("H3: source changed between plan and apply aborts before any write", async () => {
+    setMockFile("source.md", "## Old\nbody");
+    setMockFile("back.md", "Ref [[source#Old]].");
+    setMockMetadata("source.md", {
+      headings: [{ heading: "Old", level: 2, line: 0 }],
+    });
+    setMockResolvedLinks("back.md", { "source.md": 1 });
+    setMockReadMutation("source.md", "## Concurrently renamed\nbody");
+
+    const r = await renameHeadingHandler({
+      arguments: { path: "source.md", from: { text: "Old" }, to: "New" },
+      app: mockApp(),
+    });
+    expect(r.isError).toBe(true);
+    const payload = JSON.parse(r.content[0].text);
+    expect(payload.errorCode).toBe("source-write-failed");
+    // back.md untouched — abort happened before the backlinker loop.
+    const back = mockApp().vault.getAbstractFileByPath("back.md");
+    expect(await mockApp().vault.read(back as never)).toBe(
+      "Ref [[source#Old]].",
+    );
   });
 });

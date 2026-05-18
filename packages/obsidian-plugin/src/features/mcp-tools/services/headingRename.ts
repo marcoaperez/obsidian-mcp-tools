@@ -201,6 +201,7 @@ export function rewriteSourceHeadingLine(
   lines: string[],
   matchedLine: number,
   newText: string,
+  level: number,
 ): string[] {
   const original = lines[matchedLine];
   // ^(\s*#{1,6}\s+) — `#` markers + required space after
@@ -211,15 +212,12 @@ export function rewriteSourceHeadingLine(
   const re = /^(\s*#{1,6}\s+)(.+?)(\s+\^\S+)?(\s*)$/;
   const m = original.match(re);
   if (!m) {
-    // Should not happen in practice — Obsidian's cache only flags lines
-    // whose plain-text form matches this shape — but if a synthetic
-    // fixture violates it, fall back to a whole-line replace using the
-    // matched-heading's level (inferred elsewhere; here we conservatively
-    // overwrite with `# newText` which is incorrect for non-h1 but at
-    // least observable in tests). The handler guard in `findSourceHeading`
-    // is the primary defense.
+    // Defensive fallback for a heading line whose shape the regex does not
+    // capture (unusual whitespace, control chars). Preserve the heading's
+    // real level — a hardcoded H1 would silently change document structure
+    // and break the very links this tool exists to keep resolving.
     const out = lines.slice();
-    out[matchedLine] = `# ${newText}`;
+    out[matchedLine] = `${"#".repeat(level)} ${newText}`;
     return out;
   }
   const [, prefix, , blockId = "", trailing = ""] = m;
@@ -260,7 +258,9 @@ function encodeHeadingFragment(raw: string): string {
     .replace(/ /g, "%20")
     .replace(/#/g, "%23")
     .replace(/\?/g, "%3F")
-    .replace(/&/g, "%26");
+    .replace(/&/g, "%26")
+    .replace(/\[/g, "%5B")
+    .replace(/\]/g, "%5D");
 }
 
 /**
@@ -330,53 +330,42 @@ export function rewriteBacklinker(
 ): { newText: string; rewriteCount: number } {
   let rewriteCount = 0;
 
-  // ── Wikilinks `[[note#heading]]` and `[[note#heading|alias]]` ─────────────
-  //
-  // Tokenizer approach (RFC edge case #7): scan for `[[` … `]]`, split on
-  // the FIRST `#` (note part vs heading part), then on the LAST `|` (alias).
-  // Regex-only solutions struggle with `|` inside the alias text; the
-  // first-`#`/last-`|` split is unambiguous in Obsidian's grammar.
-  //
-  // We bail to a single regex first to find candidate spans, then parse
-  // each candidate by hand.
+  // Tokenizer approach (RFC edge case #7): for each link, split on the
+  // FIRST `#` (note vs heading), then on the LAST `|` (alias). Regex-only
+  // solutions struggle with `|` inside the alias text.
   const wikilinkRe = /\[\[([^\]]+?)\]\]/g;
-  let textAfterWikilinks = text.replace(wikilinkRe, (full, inner) => {
-    const hashIdx = (inner as string).indexOf("#");
-    if (hashIdx === -1) return full; // no heading fragment → leave it
-    const notePart = (inner as string).slice(0, hashIdx);
-    const rest = (inner as string).slice(hashIdx + 1);
-    const pipeIdx = rest.lastIndexOf("|");
-    const headingPart = pipeIdx === -1 ? rest : rest.slice(0, pipeIdx);
-    const aliasPart = pipeIdx === -1 ? "" : rest.slice(pipeIdx);
-
-    // Resolve `notePart` to a vault path. Empty notePart (`[[#heading]]`)
-    // is a same-file reference — resolve against the backlinker itself.
-    const linkpath = notePart === "" ? backlinkerPath : notePart;
-    const resolved = resolve(linkpath, backlinkerPath);
-    if (resolved !== sourcePath) return full;
-
-    const rewritten = rewriteHeadingPath(headingPart, oldHeading, newHeading);
-    if (rewritten === null) return full;
-
-    rewriteCount++;
-    return `[[${notePart}#${rewritten}${aliasPart}]]`;
-  });
-
-  // ── Markdown links `[text](note.md#heading)` ──────────────────────────────
-  //
-  // Pattern: `[…](…)`. The URL portion can be a vault path with optional
-  // `#fragment`. We do NOT match autolinks (`<url>`) — those don't carry
-  // heading fragments in Obsidian's link surface.
   const mdLinkRe = /\[([^\]]*)\]\(([^)]+)\)/g;
-  textAfterWikilinks = textAfterWikilinks.replace(
-    mdLinkRe,
-    (full, linkText, url) => {
+
+  const rewriteLine = (line: string): string => {
+    // ── Wikilinks `[[note#heading]]` / `[[note#heading|alias]]` ──────────
+    let out = line.replace(wikilinkRe, (full, inner) => {
+      const hashIdx = (inner as string).indexOf("#");
+      if (hashIdx === -1) return full; // no heading fragment → leave it
+      const notePart = (inner as string).slice(0, hashIdx);
+      const rest = (inner as string).slice(hashIdx + 1);
+      const pipeIdx = rest.lastIndexOf("|");
+      const headingPart = pipeIdx === -1 ? rest : rest.slice(0, pipeIdx);
+      const aliasPart = pipeIdx === -1 ? "" : rest.slice(pipeIdx);
+
+      // Empty notePart (`[[#heading]]`) is a same-file reference —
+      // resolve against the backlinker itself.
+      const linkpath = notePart === "" ? backlinkerPath : notePart;
+      const resolved = resolve(linkpath, backlinkerPath);
+      if (resolved !== sourcePath) return full;
+
+      const rewritten = rewriteHeadingPath(headingPart, oldHeading, newHeading);
+      if (rewritten === null) return full;
+
+      rewriteCount++;
+      return `[[${notePart}#${rewritten}${aliasPart}]]`;
+    });
+
+    // ── Markdown links `[text](note.md#heading)` ────────────────────────
+    out = out.replace(mdLinkRe, (full, linkText, url) => {
       const hashIdx = (url as string).indexOf("#");
       if (hashIdx === -1) return full;
       const notePart = (url as string).slice(0, hashIdx);
       const headingPartEncoded = (url as string).slice(hashIdx + 1);
-      // Strip a trailing `.md` for resolution; the link target on disk
-      // includes it but `getFirstLinkpathDest` accepts either form.
       const resolved = resolve(notePart, backlinkerPath);
       if (resolved !== sourcePath) return full;
 
@@ -386,10 +375,22 @@ export function rewriteBacklinker(
 
       rewriteCount++;
       return `[${linkText}](${notePart}#${encodeHeadingFragment(rewritten)})`;
-    },
+    });
+
+    return out;
+  };
+
+  // RFC edge case #2 / fork #137 bug class: a `[[…#…]]` or `[…](…#…)`
+  // sitting inside a fenced code block or a markdown table is literal
+  // text — Obsidian does not resolve it — so it must NOT be rewritten.
+  // Guard per line with the canonical `isInsideTableOrFencedCode` walk
+  // (the same guard the source scan uses; also covers `~~~` fences).
+  const lines = text.split("\n");
+  const outLines = lines.map((line, idx) =>
+    isInsideTableOrFencedCode(lines, idx) ? line : rewriteLine(line),
   );
 
-  return { newText: textAfterWikilinks, rewriteCount };
+  return { newText: outLines.join("\n"), rewriteCount };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -438,7 +439,12 @@ export function planRename(args: PlanRenameArgs): RenamePlan | RenameError {
   );
   if (collision) return collision;
 
-  const newSourceLines = rewriteSourceHeadingLine(lines, matched.line, args.to);
+  const newSourceLines = rewriteSourceHeadingLine(
+    lines,
+    matched.line,
+    args.to,
+    matched.level,
+  );
   const sourceTextAfterLineRewrite = newSourceLines.join("\n");
 
   // Also rewrite any self-references inside the source file (e.g.
