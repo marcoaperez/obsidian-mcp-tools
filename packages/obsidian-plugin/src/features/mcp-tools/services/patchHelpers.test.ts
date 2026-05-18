@@ -7,6 +7,7 @@ import {
   normalizeAppendBody,
   findBlockReferenceInContent,
   findBlockPositionFromCache,
+  findHeadingSectionEnd,
   planFrontmatterReplace,
   planFrontmatterAppend,
 } from "./patchHelpers";
@@ -414,5 +415,106 @@ describe("isBlockRangeStructurallyUnsafe", () => {
   test("rejects when the resolved range covers a fence-delimiter line only", () => {
     const lines = ["before", "```", "after"];
     expect(isBlockRangeStructurallyUnsafe(lines, 1, 1)).toBe(true);
+  });
+});
+
+describe("findHeadingSectionEnd (#137 — heading-branch fenced-code guard)", () => {
+  // R1: ```-fenced block with internal `## …` lines must not be treated as
+  // section boundaries; the real boundary is the next sibling heading.
+  test("R1: backtick fence with internal ## → boundary is the real next H2", () => {
+    const lines = [
+      "## Section A", // 0  target
+      "",
+      "Préambule.",
+      "",
+      "```text", // 4  fence open
+      "## Identity", // 5  NOT a boundary (in fence)
+      "paste",
+      "## Language", // 7  NOT a boundary (in fence)
+      "more",
+      "```", // 9  fence close
+      "",
+      "Postambule.",
+      "",
+      "## Section B", // 13 the real boundary
+      "",
+      "Autre.",
+    ];
+    expect(findHeadingSectionEnd(lines, 0, 2)).toBe(13);
+  });
+
+  // R2: same, with ~~~ fences (CommonMark §4.5 allows ~~~ as a fence char).
+  test("R2: tilde fence with internal ## → boundary is the real next H2", () => {
+    const lines = [
+      "## Section A", // 0
+      "",
+      "~~~text", // 2  fence open
+      "## Identity", // 3  NOT a boundary (in fence)
+      "## Language", // 4  NOT a boundary (in fence)
+      "~~~", // 5  fence close
+      "",
+      "## Section B", // 7  the real boundary
+    ];
+    expect(findHeadingSectionEnd(lines, 0, 2)).toBe(7);
+  });
+
+  // R3: no fenced block (control) — existing behaviour preserved.
+  test("R3: no fence → boundary is the next sibling heading", () => {
+    const lines = ["## A", "", "body", "", "## B", "tail"];
+    expect(findHeadingSectionEnd(lines, 0, 2)).toBe(4);
+  });
+
+  // R4: fence with no internal ## (control) — existing behaviour preserved.
+  test("R4: fence without internal headings → next sibling heading", () => {
+    const lines = [
+      "## A",
+      "",
+      "```js",
+      "const x = 1;",
+      "```",
+      "",
+      "## B",
+    ];
+    expect(findHeadingSectionEnd(lines, 0, 2)).toBe(6);
+  });
+
+  // R5: nested fences (four-backtick wrapping three-backtick) — the inner
+  // ## sample line stays opaque; boundary is the post-outer-close heading.
+  test("R5: nested fences → inner ## opaque, outer boundary honoured", () => {
+    const lines = [
+      "## A", // 0
+      "````md", // 1  outer open (4 backticks)
+      "## not a heading", // 2  NOT a boundary (in outer fence)
+      "```js", // 3  inner sample fence
+      "code();",
+      "```", // 5  inner close
+      "more sample",
+      "````", // 7  outer close
+      "## B", // 8  the real boundary
+      "body B",
+    ];
+    expect(findHeadingSectionEnd(lines, 0, 2)).toBe(8);
+  });
+
+  // R6: indented fence inside a list item — recognised as a fence (trim),
+  // a column-0 ## inside the paste is not a premature boundary.
+  test("R6: indented fence in a list → column-0 ## inside stays opaque", () => {
+    const lines = [
+      "## A", // 0
+      "- list intro", // 1
+      "  ```text", // 2  indented fence open
+      "## paste line", // 3  NOT a boundary (in fence)
+      "  ```", // 4  indented fence close
+      "## B", // 5  the real boundary
+      "end",
+    ];
+    expect(findHeadingSectionEnd(lines, 0, 2)).toBe(5);
+  });
+
+  // Control: a deeper heading inside the section is not a boundary; only a
+  // heading of the same level or shallower closes it. Runs to EOF here.
+  test("deeper heading is not a boundary; section runs to EOF", () => {
+    const lines = ["## A", "", "### sub", "x", "#### deeper", "y"];
+    expect(findHeadingSectionEnd(lines, 0, 2)).toBe(6);
   });
 });

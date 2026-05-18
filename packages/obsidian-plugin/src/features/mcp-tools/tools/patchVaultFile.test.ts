@@ -617,4 +617,81 @@ describe("patch_vault_file — block-in-fenced-code via regex-fallback (#84)", (
     expect(final).toContain("```");
     expect(final).toContain("code");
   });
+
+  // ── #137: heading-branch fenced-code silent-destruction regression ────
+  test("issue #137: heading replace honours fenced code with internal ## (no orphan tail)", async () => {
+    const fixture = [
+      "---",
+      "title: fixture",
+      "type: test",
+      "---",
+      "",
+      "# Root",
+      "",
+      "## Section A",
+      "",
+      "Préambule prose.",
+      "",
+      "```text",
+      "## Identity",
+      "Bloc en mode paste.",
+      "## Language",
+      "Suite du bloc.",
+      "```",
+      "",
+      "Postambule prose.",
+      "",
+      "## Section B",
+      "",
+      "Autre contenu.",
+      "",
+    ].join("\n");
+    setMockFile("Tests/fixture-heading-fenced.md", fixture);
+    const app = mockApp();
+    const newBody = [
+      "Nouveau corps de Section A.",
+      "",
+      "```text",
+      "## Identity",
+      "Bloc remplacé.",
+      "## Language",
+      "Bloc remplacé suite.",
+      "```",
+      "",
+      "Postambule réécrit.",
+      "",
+    ].join("\n");
+    const result = await patchVaultFileHandler({
+      arguments: {
+        path: "Tests/fixture-heading-fenced.md",
+        target: "Root::Section A",
+        targetType: "heading",
+        operation: "replace",
+        targetDelimiter: "::",
+        createTargetIfMissing: false,
+        content: newBody,
+      },
+      app,
+    });
+    expect(result.isError).toBeUndefined();
+    const file = app.vault.getAbstractFileByPath(
+      "Tests/fixture-heading-fenced.md",
+    );
+    if (!file) throw new Error("expected file");
+    const final = await app.vault.read(file as never);
+
+    // New body landed.
+    expect(final).toContain("Nouveau corps de Section A.");
+    expect(final).toContain("Bloc remplacé.");
+    expect(final).toContain("Postambule réécrit.");
+    // Next section intact, exactly once.
+    expect(final).toContain("## Section B");
+    expect(final).toContain("Autre contenu.");
+    expect(final.match(/^## Section B$/gm)?.length).toBe(1);
+    // The original in-fence tail must be GONE — its survival is the #137
+    // silent-destruction signature (orphan headings + dangling fence).
+    expect(final).not.toContain("Bloc en mode paste.");
+    expect(final).not.toContain("Suite du bloc.");
+    expect(final).not.toContain("Postambule prose.");
+  });
 });

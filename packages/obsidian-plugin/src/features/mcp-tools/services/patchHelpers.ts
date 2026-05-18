@@ -156,7 +156,11 @@ function computeFenceOpenState(lines: string[]): boolean[] {
     // The toggle at line `i` affects lines AFTER `i`, exactly matching
     // the original `for (i = 0; i < lineIdx; i++)` semantics.
     fenceOpen[i] = inFence;
-    if (lines[i].trim().startsWith("```")) inFence = !inFence;
+    // CommonMark §4.5: ``` and ~~~ are both fence delimiters. Naive toggle
+    // (no fence-char/length matching) — matches the existing simplification
+    // and is sufficient for the block (#84) and heading (#137) guards.
+    const t = lines[i].trim();
+    if (t.startsWith("```") || t.startsWith("~~~")) inFence = !inFence;
   }
   return fenceOpen;
 }
@@ -293,6 +297,43 @@ export function isBlockRangeStructurallyUnsafe(
     if (isInsideTableOrFencedCodeAt(lines, i, fenceOpen)) return true;
   }
   return false;
+}
+
+/**
+ * Compute the exclusive end line of a heading's section: the first
+ * subsequent line that is a heading of the same level or shallower
+ * (level number <= `headingLevel`), skipping any line inside a fenced
+ * code block.
+ *
+ * A `## …` line inside a ``` or ~~~ fence is opaque text (CommonMark
+ * §4.5), not a section boundary. Treating it as one silently truncates
+ * a `replace` and leaves the rest of the fence (further `##` lines, the
+ * closing delimiter, the section postamble) orphaned after the new body
+ * — the heading-branch analog of the #84 block-branch bug (fork #137).
+ * The block branch already guards via `isInsideTableOrFencedCode`; this
+ * is the symmetric guard for the heading section walker.
+ *
+ * Args:
+ *   lines: File content split on "\n".
+ *   headingLine: 0-indexed line of the resolved target heading.
+ *   headingLevel: The target heading's level (1-6).
+ *
+ * Returns:
+ *   Exclusive 0-indexed end index; `lines.length` if the section runs
+ *   to EOF.
+ */
+export function findHeadingSectionEnd(
+  lines: string[],
+  headingLine: number,
+  headingLevel: number,
+): number {
+  const fenceOpen = computeFenceOpenState(lines);
+  for (let i = headingLine + 1; i < lines.length; i++) {
+    if (fenceOpen[i]) continue;
+    const m = lines[i].match(/^(#{1,6})\s/);
+    if (m && m[1].length <= headingLevel) return i;
+  }
+  return lines.length;
 }
 
 /**
@@ -647,14 +688,9 @@ export async function applyPatch(
         isError: true,
       };
     }
-    let sectionEnd = lines.length; // exclusive index of last section line
-    for (let i = headingLine + 1; i < lines.length; i++) {
-      const m = lines[i].match(/^(#{1,6})\s/);
-      if (m && m[1].length <= headingLevel) {
-        sectionEnd = i;
-        break;
-      }
-    }
+    // Section end is fence-aware: a `## …` line inside a ``` / ~~~ block
+    // is not a boundary (fork #137 — silent destruction on `replace`).
+    const sectionEnd = findHeadingSectionEnd(lines, headingLine, headingLevel);
 
     // The section body is the lines between the heading and the next heading.
     // We want to insert content just before sectionEnd (append) or just after
