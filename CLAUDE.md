@@ -12,11 +12,11 @@ One shipped component on the 0.4.x line:
 
 Why operations go through Obsidian APIs rather than reading `.md` files directly: it preserves Obsidian's metadata cache, respects file locks on open notes, and lets the plugin invoke other Obsidian plugins (Templater, Dataview) through their APIs.
 
-Current line: **`main` = 0.4.8** — the standalone in-process HTTP MCP server (0.4.x promoted to `main` 2026-05-16); no separate binary, native semantic search via Transformers.js. **Accepted & listed in the Obsidian community plugin store** (id `mcp-tools-istefox`, 2026-05-16; Obsidian shows a standard "not manually reviewed by Obsidian staff" disclaimer — automated review path). The `packages/mcp-server` binary and `features/mcp-server-install` installer are retired. The 0.3.x stdio/binary line is archived at `archive/main-0.3.12` (abandoned; tags retained). The `[Unreleased]` block in `CHANGELOG.md` accumulates the next cut; consult `CHANGELOG.md` for its current contents (do not enumerate here — it drifts). License: MIT.
+Current line: **`main` = 0.4.10** — the standalone in-process HTTP MCP server (0.4.x promoted to `main` 2026-05-16); no separate binary, native semantic search via Transformers.js. **Accepted & listed in the Obsidian community plugin store** (id `mcp-tools-istefox`, 2026-05-16; Obsidian shows a standard "not manually reviewed by Obsidian staff" disclaimer — automated review path). The `packages/mcp-server` binary and `features/mcp-server-install` installer are retired. The 0.3.x stdio/binary line is archived at `archive/main-0.3.12` (abandoned; tags retained). The `[Unreleased]` block in `CHANGELOG.md` accumulates the next cut; consult `CHANGELOG.md` for its current contents (do not enumerate here — it drifts). License: MIT.
 
 ### Branch protection policy
 
-**`main` is the production line** — standalone in-process HTTP MCP server, currently **0.4.8** (0.4.x promoted to `main` 2026-05-16; accepted & listed in the Obsidian community store). The historical rule "don't merge `feat/http-embedded` → `main` until Stefano decides the 0.4.0 bump" is **discharged**: the promotion has happened; `main` IS the 0.4.x line. Normal branch + PR discipline now applies.
+**`main` is the production line** — standalone in-process HTTP MCP server, currently **0.4.10** (0.4.x promoted to `main` 2026-05-16; accepted & listed in the Obsidian community store). The historical rule "don't merge `feat/http-embedded` → `main` until Stefano decides the 0.4.0 bump" is **discharged**: the promotion has happened; `main` IS the 0.4.x line. Normal branch + PR discipline now applies.
 
 `feat/http-embedded` was **retired (deleted from origin) 2026-05-16** — it was 0-ahead/29-behind `main` at the time, so nothing was lost (it was removed from the `General` ruleset first, keeping `main` protection intact). `main` is the sole, authoritative line.
 
@@ -309,9 +309,9 @@ Active traps in the current tree. Historical bugs already fixed are in `git log`
 
 3. **`bun run check` at the repo root** (again) — shared-package changes cascade; both runtime packages must still type-check.
 
-## Project status (2026-05-16)
+## Project status (2026-05-18)
 
-- `main` at **0.4.8** — standalone in-process HTTP MCP server (0.4.x promoted to `main` 2026-05-16). Tools: 29. `minAppVersion: 1.7.2`. Distributed via the **Obsidian community store** (accepted & listed, id `mcp-tools-istefox`) **and** BRAT. Tag stack `0.4.0` → `0.4.8`.
+- `main` at **0.4.10** — standalone in-process HTTP MCP server (0.4.x promoted to `main` 2026-05-16). Tools: 29. `minAppVersion: 1.7.2`. Distributed via the **Obsidian community store** (accepted & listed, id `mcp-tools-istefox`) **and** BRAT. Tag stack `0.4.0` → `0.4.10`.
 - `archive/main-0.3.12` — the retired 0.3.x stdio/binary line (20 MCP tools). Preserved for historical reference; HEAD `76fa012` 2026-04-28; tag stack `0.3.0` → `0.3.12`. No active development.
 - **Community store: ACCEPTED & LISTED** (2026-05-16) — id `mcp-tools-istefox` in `obsidianmd/obsidian-releases/community-plugins.json`; installable in-app + via BRAT. Obsidian shows a standard "not manually reviewed by Obsidian staff" disclaimer (automated review path; high-risk `fs`/`child_process` capability disclosures, which are intrinsic and were deliberately NOT removed). The legacy PR-based submission `obsidianmd/obsidian-releases#11919` was closed (process moved to the community.obsidian.md portal). Consult `CHANGELOG.md` for the current `[Unreleased]` state.
 

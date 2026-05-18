@@ -5,6 +5,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), version
 
 ## [Unreleased]
 
+### Added
+
+- **Heading patching now works on notes with no H1.** `patch_vault_file`
+  and `patch_active_file` heading targets succeed on the common
+  Obsidian pattern of a frontmatter `title:` with the body starting at
+  `##` — a file with no `#` heading at all has an unambiguous root and
+  is accepted automatically. A new optional `allowRootHeadings`
+  parameter opts in to the same for the ambiguous case where an H1
+  exists elsewhere in the note (default off; the existing fail-loud
+  guard is unchanged for that case without it).
+
+### Fixed
+
+- **Heading `replace` no longer destroys content around fenced code
+  (data integrity).** Replacing a heading section whose body contained
+  a fenced code block with `##` lines inside silently truncated at the
+  first in-fence `##`, leaving the rest of the block (and the section
+  tail) orphaned in the file while reporting success. The section
+  boundary now treats lines inside ` ``` ` / `~~~` fences as opaque,
+  for both `patch_vault_file` and `patch_active_file`.
+- **`get_vault_file_partial` frontmatter mode gives an actionable
+  error.** When a frontmatter block is present but Obsidian's metadata
+  cache could not parse it (commonly an unquoted scalar whose value
+  contains `": "`), the tool reported a misleading "File has no
+  frontmatter"; it now names the likely cause and the fix.
+
 ## [0.4.9] — 2026-05-17
 
 ### Security
