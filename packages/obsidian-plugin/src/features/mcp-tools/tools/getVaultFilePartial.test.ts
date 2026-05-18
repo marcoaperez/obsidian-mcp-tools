@@ -107,6 +107,60 @@ describe("get_vault_file_partial tool", () => {
       expect(r.content[0].text).toContain("File has no frontmatter");
     });
 
+    // ── #138: cache-empty disambiguation ──────────────────────────────
+    // The tool reflects Obsidian's MetadataCache and never re-parses YAML
+    // (a second parser would diverge from the rest of Obsidian). When a
+    // frontmatter block IS present but the cache exposed nothing (Obsidian's
+    // own parser dropped it — e.g. an unquoted scalar containing ": "), the
+    // error must be actionable, not the misleading "File has no frontmatter".
+    test("#138: fence present but cache empty → actionable parse-divergence error", async () => {
+      setMockFile(
+        "repro.md",
+        [
+          "---",
+          "id: t-repro-018",
+          'purpose: Verify partial-read behavior with patch_vault_file targetType: "block"',
+          "---",
+          "",
+          "# Body",
+        ].join("\n"),
+      );
+      // No setMockMetadata → simulates Obsidian's cache dropping the block.
+      const r = await getVaultFilePartialHandler({
+        arguments: {
+          filename: "repro.md",
+          mode: "frontmatter",
+          target: "purpose",
+        },
+        app: mockApp(),
+      });
+      expect(r.isError).toBe(true);
+      expect(r.content[0].text).not.toContain("File has no frontmatter");
+      expect(r.content[0].text).toContain("metadata cache");
+      expect(r.content[0].text).toContain(": ");
+    });
+
+    test("#138 R4: empty fence (--- / ---) → still 'File has no frontmatter'", async () => {
+      setMockFile("empty-fm.md", ["---", "---", "", "# Body"].join("\n"));
+      const r = await getVaultFilePartialHandler({
+        arguments: { filename: "empty-fm.md", mode: "frontmatter", target: "x" },
+        app: mockApp(),
+      });
+      expect(r.isError).toBe(true);
+      expect(r.content[0].text).toContain("File has no frontmatter");
+    });
+
+    test("#138 R5: opening --- with no closing fence → actionable error, not 'no frontmatter'", async () => {
+      setMockFile("malformed.md", ["---", "foo: bar", "still no close"].join("\n"));
+      const r = await getVaultFilePartialHandler({
+        arguments: { filename: "malformed.md", mode: "frontmatter", target: "foo" },
+        app: mockApp(),
+      });
+      expect(r.isError).toBe(true);
+      expect(r.content[0].text).not.toContain("File has no frontmatter");
+      expect(r.content[0].text).toContain("metadata cache");
+    });
+
     test("supports special-character keys", async () => {
       setMockFile("note.md", "");
       setMockMetadata("note.md", {
