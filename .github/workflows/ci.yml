@@ -1,9 +1,11 @@
 name: CI
 
-# On-PR validation: typecheck + tests across the workspace.
-# Runs on every push to main / feat/http-embedded and on every PR
-# targeting either branch. Release workflow stays separate (release.yml,
-# triggered on tag push) and is responsible for build + upload.
+# On-PR validation: typecheck + bundle build-smoke + tests across the
+# workspace. Runs on every push to main / feat/http-embedded and on
+# every PR targeting either branch. The build step here is a smoke
+# check that catches a non-buildable bundle (e.g. Svelte/patch version
+# drift — #150). release.yml stays separate (tag-triggered) and owns
+# the release build: release env + zip + upload + attestation.
 #
 # CI does NOT exercise the manual smoke matrix (vault TEST + Claude
 # Code + Claude Desktop + Cursor/Cline) — that is reserved for
@@ -44,6 +46,9 @@ jobs:
 
       - name: Typecheck (workspace-wide)
         run: bun run check
+
+      - name: Build (bundle smoke)
+        run: bun run build
 
       - name: Tests — shared
         run: cd packages/shared && bun test
